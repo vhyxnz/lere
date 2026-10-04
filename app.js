@@ -215,17 +215,37 @@ async function readEmbeddedMetadata(file) {
 
 function currentTrack() { return state.tracks.find(track => track.id === state.currentId); }
 
-function syncMediaSession(track, playbackState = audio.paused ? 'paused' : 'playing') {
+async function stableArtworkUrl(track) {
+  if (!track?.coverBlob) return new URL('./icon-512.png', window.location.href).href;
+  if (track.mediaArtworkUrl) return track.mediaArtworkUrl;
+  if (!('caches' in window)) return await blobToDataUrl(track.coverBlob);
+  const url = new URL(`./media-art/${encodeURIComponent(track.id)}`, window.location.href).href;
+  const cache = await caches.open('lere-artwork-v1');
+  await cache.put(url, new Response(track.coverBlob, { headers: { 'Content-Type': track.coverBlob.type || 'image/jpeg', 'Cache-Control': 'no-store' } }));
+  track.mediaArtworkUrl = url;
+  return url;
+}
+
+async function removeCachedArtwork(id) {
+  if (!('caches' in window)) return;
+  const cache = await caches.open('lere-artwork-v1');
+  await cache.delete(new URL(`./media-art/${encodeURIComponent(id)}`, window.location.href).href);
+}
+
+async function syncMediaSession(track, playbackState = audio.paused ? 'paused' : 'playing') {
   if (!('mediaSession' in navigator) || !track || typeof MediaMetadata === 'undefined') return;
   const fallbackArtwork = new URL('./icon-512.png', window.location.href).href;
-  const artwork = track.cover
-    ? [{ src: track.cover, type: track.coverBlob?.type || 'image/jpeg' }, { src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]
-    : [{ src: fallbackArtwork, sizes: '512x512', type: 'image/png' }];
+  const publish = (artwork) => {
+    try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library', artwork }); }
+    catch (_) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library' }); } catch (_) {} }
+  };
+  publish([{ src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]);
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library', artwork });
-  } catch (_) {
-    try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library' }); } catch (_) {}
-  }
+    if (track.coverBlob) {
+      const artworkUrl = await stableArtworkUrl(track);
+      if (currentTrack()?.id === track.id) publish([{ src: artworkUrl, type: track.coverBlob.type || 'image/jpeg' }, { src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]);
+    }
+  } catch (_) {}
   try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
 }
 
@@ -448,7 +468,7 @@ $('#trackList').addEventListener('click', (event) => {
     event.stopPropagation();
     const id = remove.dataset.remove;
     const track = state.tracks.find(item => item.id === id);
-    if (track) { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }
+    if (track) { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); removeCachedArtwork(track.id); }
     state.tracks = state.tracks.filter(item => item.id !== id);
     deleteStoredTrack(id);
     if (state.currentId === id) { audio.pause(); audio.removeAttribute('src'); state.currentId = null; setPlaying(false); updateNowPlaying(null); }
@@ -470,6 +490,8 @@ $('#coverInput').addEventListener('change', (event) => {
   const track = state.tracks.find(item => item.id === coverTargetId);
   if (file && track) {
     if (track.cover) URL.revokeObjectURL(track.cover);
+    removeCachedArtwork(track.id);
+    track.mediaArtworkUrl = '';
     track.coverBlob = file;
     track.cover = URL.createObjectURL(file);
     storeTrack(track);
@@ -490,7 +512,7 @@ $('#prevBtn').addEventListener('click', () => move(-1));
 $('#nextBtn').addEventListener('click', () => move(1));
 $('#shuffleBtn').addEventListener('click', event => { state.shuffle = !state.shuffle; event.currentTarget.classList.toggle('active', state.shuffle); toast(`Shuffle ${state.shuffle ? 'on' : 'off'}`); });
 $('#repeatBtn').addEventListener('click', event => { state.repeat = !state.repeat; event.currentTarget.classList.toggle('active', state.repeat); toast(`Repeat ${state.repeat ? 'on' : 'off'}`); });
-$('#clearBtn').addEventListener('click', () => { state.tracks.forEach(track => { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }); state.tracks = []; clearStoredTracks(); state.currentId = null; audio.pause(); audio.removeAttribute('src'); setPlaying(false); updateNowPlaying(null); if ('mediaSession' in navigator) navigator.mediaSession.metadata = null; render(); toast('Library cleared'); });
+$('#clearBtn').addEventListener('click', () => { state.tracks.forEach(track => { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }); state.tracks = []; clearStoredTracks(); if ('caches' in window) caches.delete('lere-artwork-v1'); state.currentId = null; audio.pause(); audio.removeAttribute('src'); setPlaying(false); updateNowPlaying(null); if ('mediaSession' in navigator) navigator.mediaSession.metadata = null; render(); toast('Library cleared'); });
 $('#volumeBar').addEventListener('input', event => { audio.volume = Number(event.target.value); localStorage.setItem('pulsedeck-volume', event.target.value); });
 $('#seekBar').addEventListener('input', event => { if (audio.duration) audio.currentTime = audio.duration * (Number(event.target.value) / 100); });
 $('#dataBtn').addEventListener('click', () => $('#dataDialog').showModal());
