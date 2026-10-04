@@ -47,7 +47,7 @@
           <button id="themeBtn" class="icon-btn" aria-label="Toggle color theme" title="Toggle color theme"><svg class="moon-icon" viewBox="0 0 24 24"><path d="M20 15.5A8 8 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button>
           <input id="fileInput" type="file" accept="audio/*" multiple hidden />
           <input id="coverInput" type="file" accept="image/*" hidden />
-          <input id="importInput" type="file" accept=".lere,.json,application/json" hidden />
+          <input id="importInput" type="file" hidden />
         </div>
       </header>
 
@@ -119,7 +119,7 @@
     <p>Move your songs, covers, playlists, and preferences between devices. Backup files stay entirely on your device.</p>
     <div class="data-actions">
       <button id="exportDataBtn"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg><span><strong>Export data</strong><small>Download a complete Lere backup</small></span></button>
-      <button id="importDataBtn"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 15v5h14v-5"/></svg><span><strong>Import data</strong><small>Merge a Lere backup into this library</small></span></button>
+      <label id="importDataBtn" for="importInput" role="button" tabindex="0"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 15v5h14v-5"/></svg><span><strong>Import data</strong><small>Select a .lere or .lere.json backup</small></span></label>
     </div>
   </dialog>
   <dialog id="editDialog" class="data-dialog edit-dialog">

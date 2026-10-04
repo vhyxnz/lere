@@ -95,7 +95,7 @@ async function exportLibraryData() {
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `lere-backup-${new Date().toISOString().slice(0, 10)}.lere`;
+    link.download = `lere-backup-${new Date().toISOString().slice(0, 10)}.lere.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     toast(`${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'} exported`);
@@ -108,7 +108,7 @@ async function importLibraryData(file) {
   try {
     const backup = JSON.parse(await file.text());
     if (backup.app !== 'Lere' || backup.version !== 1 || !Array.isArray(backup.tracks)) throw new Error('Invalid backup');
-    $('#importDataBtn').disabled = true;
+    $('#importDataBtn').setAttribute('aria-disabled', 'true');
     for (const item of backup.tracks) {
       if (!item.audio?.data || !item.audio?.name) continue;
       const audioBlob = dataUrlToBlob(item.audio.data);
@@ -138,7 +138,7 @@ async function importLibraryData(file) {
     $('#dataDialog').close();
     toast(`${backup.tracks.length} ${backup.tracks.length === 1 ? 'track' : 'tracks'} imported`);
   } catch (_) { toast('This is not a valid Lere backup.'); }
-  finally { $('#importDataBtn').disabled = false; $('#importInput').value = ''; }
+  finally { $('#importDataBtn').removeAttribute('aria-disabled'); $('#importInput').value = ''; }
 }
 
 const formatTime = (seconds) => {
@@ -488,7 +488,7 @@ $('#seekBar').addEventListener('input', event => { if (audio.duration) audio.cur
 $('#dataBtn').addEventListener('click', () => $('#dataDialog').showModal());
 $('#closeDataBtn').addEventListener('click', () => $('#dataDialog').close());
 $('#exportDataBtn').addEventListener('click', exportLibraryData);
-$('#importDataBtn').addEventListener('click', () => $('#importInput').click());
+$('#importDataBtn').addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('#importInput').click(); } });
 $('#importInput').addEventListener('change', event => { const file = event.target.files[0]; if (file) importLibraryData(file); });
 $('#dataDialog').addEventListener('click', event => { if (event.target === $('#dataDialog')) $('#dataDialog').close(); });
 function closeEditDialog() { $('#editDialog').close(); editTargetId = null; }
