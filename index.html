@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0d12" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="description" content="Lere is a private offline music player for audio stored on your device." />
+  <meta name="application-name" content="Lere" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Lere" />
+  <title>Lere</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Lere home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5v14h4l2-7 4 9 3-8h3"/></svg></span>
+        <span>Lere</span>
+      </a>
+
+      <nav class="nav" aria-label="Library navigation">
+        <button class="nav-item active" data-filter="all"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/></svg><span>All music</span></button>
+        <button class="nav-item" data-filter="local"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg><span>On this device</span></button>
+        <button class="nav-item" data-filter="playlist"><svg viewBox="0 0 24 24"><path d="M4 6h10M4 11h10M4 16h7"/><path d="M18 13v7m0-7 3 2m-3-2-3 2"/></svg><span>My playlist</span></button>
+      </nav>
+
+      <div class="offline-card">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg>
+        <div><strong>Offline ready</strong><span>Local tracks play without internet.</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">YOUR PRIVATE LISTENING SPACE</p>
+          <h1>Music, without the noise.</h1>
+        </div>
+        <div class="header-actions">
+          <button id="themeBtn" class="icon-btn" aria-label="Toggle color theme" title="Toggle color theme"><svg class="moon-icon" viewBox="0 0 24 24"><path d="M20 15.5A8 8 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button>
+          <input id="fileInput" type="file" accept="audio/*" multiple hidden />
+          <input id="coverInput" type="file" accept="image/*" hidden />
+        </div>
+      </header>
+
+      <section class="recommendations" aria-labelledby="recommendations-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">FOR YOU</p><h2 id="recommendations-title">From your collection</h2></div>
+          <span class="track-count">Based on uploaded songs</span>
+        </div>
+        <div id="recommendationGrid" class="recommendation-grid"><div class="recommendation-empty">Upload at least two songs to get recommendations from your collection.</div></div>
+      </section>
+
+      <section class="library" aria-labelledby="library-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">LIBRARY</p><h2 id="library-title">Your queue</h2></div>
+          <div class="library-tools"><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
+        </div>
+
+        <div id="emptyState" hidden></div>
+
+        <div id="trackList" class="track-list" role="list"></div>
+      </section>
+    </main>
+  </div>
+
+  <label class="floating-add" for="fileInput" aria-label="Add music" title="Add music"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></label>
+
+  <footer class="player" aria-label="Audio player">
+    <section id="playerDrawer" class="player-drawer" aria-label="Expanded player" aria-hidden="true">
+      <button id="closeDrawerBtn" class="icon-btn drawer-close" aria-label="Close expanded player"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="drawer-main">
+        <div class="expanded-now">
+          <div id="expandedArtwork" class="expanded-artwork"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div>
+          <p class="eyebrow">NOW PLAYING</p>
+          <h2 id="expandedTitle">Nothing playing</h2>
+          <p id="expandedArtist">Upload a track to begin</p>
+        </div>
+        <div class="queue-panel">
+          <div class="drawer-heading"><div><p class="eyebrow">UP NEXT</p><h2>Queue</h2></div></div>
+          <div id="playerQueue" class="player-queue"></div>
+        </div>
+      </div>
+    </section>
+    <div class="now-playing">
+      <div id="artwork" class="artwork"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div>
+      <div class="track-meta"><strong id="nowTitle">Nothing playing</strong><span id="nowSource">Add a track to begin</span></div>
+    </div>
+
+    <div class="transport">
+      <div class="transport-buttons">
+        <button id="shuffleBtn" class="small-control" aria-label="Toggle shuffle" title="Shuffle"><svg viewBox="0 0 24 24"><path d="M4 7h3c5 0 5 10 10 10h3"/><path d="m17 14 3 3-3 3"/><path d="M4 17h3c2 0 3-.9 4-2.2M14 8.5C15 7.6 16 7 17 7h3"/><path d="m17 4 3 3-3 3"/></svg></button>
+        <button id="prevBtn" class="control" aria-label="Previous track"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path d="m18 6-9 6 9 6z"/></svg></button>
+        <button id="playBtn" class="play-control" aria-label="Play"><svg id="playIcon" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6z"/></svg></button>
+        <button id="nextBtn" class="control" aria-label="Next track"><svg viewBox="0 0 24 24"><path d="M18 5v14"/><path d="m6 6 9 6-9 6z"/></svg></button>
+        <button id="repeatBtn" class="small-control" aria-label="Toggle repeat" title="Repeat"><svg viewBox="0 0 24 24"><path d="m17 2 3 3-3 3"/><path d="M3 11V9a4 4 0 0 1 4-4h13"/><path d="m7 22-3-3 3-3"/><path d="M21 13v2a4 4 0 0 1-4 4H4"/></svg></button>
+      </div>
+      <div class="timeline"><span id="currentTime">0:00</span><input id="seekBar" type="range" min="0" max="100" value="0" aria-label="Seek through track" /><span id="duration">0:00</span></div>
+    </div>
+
+    <div class="volume-area">
+      <svg viewBox="0 0 24 24"><path d="M5 10v4h4l5 4V6l-5 4z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>
+      <input id="volumeBar" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
+      <button id="clearBtn" class="icon-btn" aria-label="Clear queue" title="Clear queue"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg></button>
+    </div>
+  </footer>
+
+  <audio id="audio" preload="metadata"></audio>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
