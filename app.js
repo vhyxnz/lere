@@ -56,6 +56,90 @@ async function restoreLibrary() {
   render();
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, encoded] = dataUrl.split(',');
+  const mime = header.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime });
+}
+
+async function exportLibraryData() {
+  try {
+    $('#exportDataBtn').disabled = true;
+    const tracks = await Promise.all(state.tracks.map(async (track) => ({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      saved: track.saved,
+      addedAt: track.addedAt,
+      audio: { name: track.file.name, type: track.file.type, lastModified: track.file.lastModified, data: await blobToDataUrl(track.file) },
+      cover: track.coverBlob ? { type: track.coverBlob.type, data: await blobToDataUrl(track.coverBlob) } : null
+    })));
+    const backup = {
+      app: 'Lere', version: 1, exportedAt: new Date().toISOString(), tracks,
+      settings: { theme: document.body.classList.contains('light') ? 'light' : 'dark', volume: $('#volumeBar').value, view: state.view }
+    };
+    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `lere-backup-${new Date().toISOString().slice(0, 10)}.lere`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    toast(`${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'} exported`);
+    $('#dataDialog').close();
+  } catch (_) { toast('Could not export the library.'); }
+  finally { $('#exportDataBtn').disabled = false; }
+}
+
+async function importLibraryData(file) {
+  try {
+    const backup = JSON.parse(await file.text());
+    if (backup.app !== 'Lere' || backup.version !== 1 || !Array.isArray(backup.tracks)) throw new Error('Invalid backup');
+    $('#importDataBtn').disabled = true;
+    for (const item of backup.tracks) {
+      if (!item.audio?.data || !item.audio?.name) continue;
+      const audioBlob = dataUrlToBlob(item.audio.data);
+      const audioFile = new File([audioBlob], item.audio.name, { type: item.audio.type || audioBlob.type, lastModified: item.audio.lastModified || Date.now() });
+      const coverBlob = item.cover?.data ? dataUrlToBlob(item.cover.data) : null;
+      const track = {
+        id: item.id || crypto.randomUUID(), title: item.title || item.audio.name.replace(/\.[^.]+$/, ''), artist: item.artist || 'Uploaded audio',
+        album: item.album || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), file: audioFile, coverBlob,
+        url: URL.createObjectURL(audioFile), cover: coverBlob ? URL.createObjectURL(coverBlob) : ''
+      };
+      const existingIndex = state.tracks.findIndex(existing => existing.id === track.id);
+      if (existingIndex >= 0) {
+        URL.revokeObjectURL(state.tracks[existingIndex].url);
+        if (state.tracks[existingIndex].cover) URL.revokeObjectURL(state.tracks[existingIndex].cover);
+        state.tracks[existingIndex] = track;
+      } else state.tracks.push(track);
+      await storeTrack(track);
+    }
+    if (backup.settings) {
+      if (backup.settings.theme === 'light') document.body.classList.add('light'); else document.body.classList.remove('light');
+      if (backup.settings.volume != null) { $('#volumeBar').value = backup.settings.volume; audio.volume = Number(backup.settings.volume); localStorage.setItem('pulsedeck-volume', backup.settings.volume); }
+      if (backup.settings.view === 'grid' || backup.settings.view === 'list') { state.view = backup.settings.view; localStorage.setItem('pulsedeck-view', state.view); }
+      localStorage.setItem('pulsedeck-theme', backup.settings.theme === 'light' ? 'light' : 'dark');
+    }
+    state.tracks.sort((a, b) => a.addedAt - b.addedAt);
+    render();
+    $('#dataDialog').close();
+    toast(`${backup.tracks.length} ${backup.tracks.length === 1 ? 'track' : 'tracks'} imported`);
+  } catch (_) { toast('This is not a valid Lere backup.'); }
+  finally { $('#importDataBtn').disabled = false; $('#importInput').value = ''; }
+}
+
 const formatTime = (seconds) => {
   if (!Number.isFinite(seconds)) return '0:00';
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -385,6 +469,12 @@ $('#repeatBtn').addEventListener('click', event => { state.repeat = !state.repea
 $('#clearBtn').addEventListener('click', () => { state.tracks.forEach(track => { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }); state.tracks = []; clearStoredTracks(); state.currentId = null; audio.pause(); audio.removeAttribute('src'); setPlaying(false); updateNowPlaying(null); if ('mediaSession' in navigator) navigator.mediaSession.metadata = null; render(); toast('Library cleared'); });
 $('#volumeBar').addEventListener('input', event => { audio.volume = Number(event.target.value); localStorage.setItem('pulsedeck-volume', event.target.value); });
 $('#seekBar').addEventListener('input', event => { if (audio.duration) audio.currentTime = audio.duration * (Number(event.target.value) / 100); });
+$('#dataBtn').addEventListener('click', () => $('#dataDialog').showModal());
+$('#closeDataBtn').addEventListener('click', () => $('#dataDialog').close());
+$('#exportDataBtn').addEventListener('click', exportLibraryData);
+$('#importDataBtn').addEventListener('click', () => $('#importInput').click());
+$('#importInput').addEventListener('change', event => { const file = event.target.files[0]; if (file) importLibraryData(file); });
+$('#dataDialog').addEventListener('click', event => { if (event.target === $('#dataDialog')) $('#dataDialog').close(); });
 $('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
 audio.addEventListener('play', () => { setPlaying(true); render(); });
 audio.addEventListener('pause', () => setPlaying(false));

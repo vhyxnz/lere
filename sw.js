@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lere-shell-v1';
+const CACHE_NAME = 'lere-shell-v2';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
