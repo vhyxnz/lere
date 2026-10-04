@@ -215,6 +215,20 @@ async function readEmbeddedMetadata(file) {
 
 function currentTrack() { return state.tracks.find(track => track.id === state.currentId); }
 
+function syncMediaSession(track, playbackState = audio.paused ? 'paused' : 'playing') {
+  if (!('mediaSession' in navigator) || !track || typeof MediaMetadata === 'undefined') return;
+  const fallbackArtwork = new URL('./icon-512.png', window.location.href).href;
+  const artwork = track.cover
+    ? [{ src: track.cover, type: track.coverBlob?.type || 'image/jpeg' }, { src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]
+    : [{ src: fallbackArtwork, sizes: '512x512', type: 'image/png' }];
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library', artwork });
+  } catch (_) {
+    try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library' }); } catch (_) {}
+  }
+  try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
+}
+
 function updateNowPlaying(track) {
   $('#nowTitle').textContent = track?.title || 'Nothing playing';
   $('#nowSource').textContent = track ? track.artist : 'Upload a track to begin';
@@ -226,14 +240,7 @@ function updateNowPlaying(track) {
   artwork.classList.toggle('has-cover', Boolean(track?.cover));
   expandedArtwork.style.backgroundImage = track?.cover ? `url("${track.cover}")` : '';
   expandedArtwork.classList.toggle('has-cover', Boolean(track?.cover));
-  if ('mediaSession' in navigator && track) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title,
-      artist: track.artist,
-      album: track.album || 'Lere Library',
-      artwork: track.cover ? [{ src: track.cover, sizes: '512x512' }] : []
-    });
-  }
+  if (track) syncMediaSession(track);
 }
 
 function recommendationScore(candidate, current) {
@@ -372,6 +379,7 @@ $('#playerQueue').addEventListener('click', (event) => {
 
 function setDrawer(open) {
   $('.player').classList.toggle('expanded', open);
+  document.body.classList.toggle('drawer-open', open);
   $('#playerDrawer').setAttribute('aria-hidden', String(!open));
 }
 
@@ -510,8 +518,10 @@ $('#editForm').addEventListener('submit', async event => {
   toast('Song details updated');
 });
 $('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
-audio.addEventListener('play', () => { setPlaying(true); render(); });
-audio.addEventListener('pause', () => setPlaying(false));
+audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(currentTrack(), 'playing'); render(); });
+audio.addEventListener('playing', () => syncMediaSession(currentTrack(), 'playing'));
+audio.addEventListener('pause', () => { setPlaying(false); syncMediaSession(currentTrack(), 'paused'); });
+audio.addEventListener('loadedmetadata', () => syncMediaSession(currentTrack(), audio.paused ? 'paused' : 'playing'));
 audio.addEventListener('ended', () => state.repeat ? playTrack(state.currentId) : move(1));
 audio.addEventListener('timeupdate', () => {
   $('#currentTime').textContent = formatTime(audio.currentTime);
@@ -522,11 +532,15 @@ audio.addEventListener('timeupdate', () => {
   }
 });
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => audio.play());
-  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-  navigator.mediaSession.setActionHandler('previoustrack', () => move(-1));
-  navigator.mediaSession.setActionHandler('nexttrack', () => move(1));
-  navigator.mediaSession.setActionHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
+  const setHandler = (action, handler) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {} };
+  setHandler('play', () => audio.play());
+  setHandler('pause', () => audio.pause());
+  setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
+  setHandler('previoustrack', () => move(-1));
+  setHandler('nexttrack', () => move(1));
+  setHandler('seekbackward', details => { audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10)); });
+  setHandler('seekforward', details => { audio.currentTime = Math.min(audio.duration || audio.currentTime + 10, audio.currentTime + (details.seekOffset || 10)); });
+  setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
 const savedVolume = localStorage.getItem('pulsedeck-volume');
