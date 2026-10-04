@@ -3,6 +3,7 @@ const audio = $('#audio');
 const state = { tracks: [], currentId: null, filter: 'all', shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list' };
 const icons = { play: '<path d="m9 6 9 6-9 6z"/>', pause: '<path d="M8 6h3v12H8zM14 6h3v12h-3z"/>' };
 let coverTargetId = null;
+let editTargetId = null;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -297,6 +298,7 @@ function render() {
       <div class="track-actions">
         <button class="track-action menu-trigger" data-menu="${track.id}" aria-label="Actions for ${escapeHtml(track.title)}" aria-expanded="${Boolean(track.menuOpen)}"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         <div class="track-menu ${track.menuOpen ? 'open' : ''}">
+          <button data-edit="${track.id}"><svg viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>Edit details</button>
           <button data-cover="${track.id}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 17 5-5 4 4 2-2 5 4"/></svg>${track.cover ? 'Change cover' : 'Add cover'}</button>
           <button data-save="${track.id}"><svg viewBox="0 0 24 24"><path d="M5 4h14v17l-7-4-7 4z"/></svg>${track.saved ? 'Remove from playlist' : 'Add to playlist'}</button>
           <button data-download="${track.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/></svg>Download</button>
@@ -390,6 +392,20 @@ $('#trackList').addEventListener('click', (event) => {
     render();
     return;
   }
+  const edit = event.target.closest('[data-edit]');
+  if (edit) {
+    event.stopPropagation();
+    const track = state.tracks.find(item => item.id === edit.dataset.edit);
+    if (track) {
+      editTargetId = track.id;
+      track.menuOpen = false;
+      $('#editTitle').value = track.title;
+      $('#editArtist').value = track.artist;
+      $('#editDialog').showModal();
+      requestAnimationFrame(() => $('#editTitle').focus());
+    }
+    return;
+  }
   const cover = event.target.closest('[data-cover]');
   if (cover) {
     event.stopPropagation();
@@ -475,6 +491,24 @@ $('#exportDataBtn').addEventListener('click', exportLibraryData);
 $('#importDataBtn').addEventListener('click', () => $('#importInput').click());
 $('#importInput').addEventListener('change', event => { const file = event.target.files[0]; if (file) importLibraryData(file); });
 $('#dataDialog').addEventListener('click', event => { if (event.target === $('#dataDialog')) $('#dataDialog').close(); });
+function closeEditDialog() { $('#editDialog').close(); editTargetId = null; }
+$('#closeEditBtn').addEventListener('click', closeEditDialog);
+$('#cancelEditBtn').addEventListener('click', closeEditDialog);
+$('#editDialog').addEventListener('click', event => { if (event.target === $('#editDialog')) closeEditDialog(); });
+$('#editForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const track = state.tracks.find(item => item.id === editTargetId);
+  const title = $('#editTitle').value.trim();
+  const artist = $('#editArtist').value.trim();
+  if (!track || !title || !artist) return;
+  track.title = title;
+  track.artist = artist;
+  await storeTrack(track);
+  render();
+  if (track.id === state.currentId) updateNowPlaying(track);
+  closeEditDialog();
+  toast('Song details updated');
+});
 $('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
 audio.addEventListener('play', () => { setPlaying(true); render(); });
 audio.addEventListener('pause', () => setPlaying(false));

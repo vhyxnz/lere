@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0d12" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="description" content="Lere is a private offline music player for audio stored on your device." />
@@ -26,7 +26,7 @@
 
       <nav class="nav" aria-label="Library navigation">
         <button class="nav-item active" data-filter="all"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/></svg><span>All music</span></button>
-        <button class="nav-item" data-filter="local"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg><span>On this device</span></button>
+        <button class="nav-item" data-filter="local"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg><span>Device</span></button>
         <button class="nav-item" data-filter="playlist"><svg viewBox="0 0 24 24"><path d="M4 6h10M4 11h10M4 16h7"/><path d="M18 13v7m0-7 3 2m-3-2-3 2"/></svg><span>My playlist</span></button>
       </nav>
 
@@ -121,6 +121,16 @@
       <button id="exportDataBtn"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg><span><strong>Export data</strong><small>Download a complete Lere backup</small></span></button>
       <button id="importDataBtn"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 15v5h14v-5"/></svg><span><strong>Import data</strong><small>Merge a Lere backup into this library</small></span></button>
     </div>
+  </dialog>
+  <dialog id="editDialog" class="data-dialog edit-dialog">
+    <form id="editForm">
+      <div class="dialog-heading"><div><p class="eyebrow">SONG DETAILS</p><h2>Edit track</h2></div><button id="closeEditBtn" type="button" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="edit-fields">
+        <label for="editTitle">Song name<input id="editTitle" type="text" maxlength="180" required /></label>
+        <label for="editArtist">Artist<input id="editArtist" type="text" maxlength="180" required /></label>
+      </div>
+      <div class="dialog-footer"><button id="cancelEditBtn" type="button" class="dialog-secondary">Cancel</button><button type="submit" class="dialog-primary">Save changes</button></div>
+    </form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
