@@ -578,6 +578,10 @@ if ('mediaSession' in navigator) {
   setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
   setHandler('previoustrack', previousTrack);
   setHandler('nexttrack', () => move(1));
+  // iOS may render seek glyphs for web audio even when track actions are
+  // registered. Map those platform actions to the same music navigation.
+  setHandler('seekbackward', previousTrack);
+  setHandler('seekforward', () => move(1));
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
