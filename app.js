@@ -215,37 +215,46 @@ async function readEmbeddedMetadata(file) {
 
 function currentTrack() { return state.tracks.find(track => track.id === state.currentId); }
 
-async function stableArtworkUrl(track) {
-  if (!track?.coverBlob) return new URL('./icon-512.png', window.location.href).href;
-  if (track.mediaArtworkUrl) return track.mediaArtworkUrl;
-  if (!('caches' in window)) return await blobToDataUrl(track.coverBlob);
-  const url = new URL(`./media-art/${encodeURIComponent(track.id)}`, window.location.href).href;
-  const cache = await caches.open('lere-artwork-v1');
-  await cache.put(url, new Response(track.coverBlob, { headers: { 'Content-Type': track.coverBlob.type || 'image/jpeg', 'Cache-Control': 'no-store' } }));
-  track.mediaArtworkUrl = url;
-  return url;
+function loadArtworkImage(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Artwork could not be decoded')); };
+    image.src = url;
+  });
 }
 
-async function removeCachedArtwork(id) {
-  if (!('caches' in window)) return;
-  const cache = await caches.open('lere-artwork-v1');
-  await cache.delete(new URL(`./media-art/${encodeURIComponent(id)}`, window.location.href).href);
+async function mediaArtwork(track) {
+  const fallbackArtwork = new URL('./icon-512.png', window.location.href).href;
+  if (!track?.coverBlob) return { src: fallbackArtwork, sizes: '512x512', type: 'image/png' };
+  if (!track.mediaArtworkDataUrl) {
+    const image = await loadArtworkImage(track.coverBlob);
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
+    const scale = Math.max(512 / image.naturalWidth, 512 / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    context.fillStyle = '#0b0d12';
+    context.fillRect(0, 0, 512, 512);
+    context.drawImage(image, (512 - width) / 2, (512 - height) / 2, width, height);
+    track.mediaArtworkDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  }
+  return { src: track.mediaArtworkDataUrl, sizes: '512x512', type: 'image/jpeg' };
 }
 
 async function syncMediaSession(track, playbackState = audio.paused ? 'paused' : 'playing') {
   if (!('mediaSession' in navigator) || !track || typeof MediaMetadata === 'undefined') return;
-  const fallbackArtwork = new URL('./icon-512.png', window.location.href).href;
   const publish = (artwork) => {
     try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library', artwork }); }
     catch (_) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library' }); } catch (_) {} }
   };
-  publish([{ src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]);
   try {
-    if (track.coverBlob) {
-      const artworkUrl = await stableArtworkUrl(track);
-      if (currentTrack()?.id === track.id) publish([{ src: artworkUrl, type: track.coverBlob.type || 'image/jpeg' }, { src: fallbackArtwork, sizes: '512x512', type: 'image/png' }]);
-    }
-  } catch (_) {}
+    const artwork = await mediaArtwork(track);
+    if (currentTrack()?.id === track.id) publish([artwork]);
+  } catch (_) { publish([{ src: new URL('./icon-512.png', window.location.href).href, sizes: '512x512', type: 'image/png' }]); }
   try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
 }
 
@@ -362,6 +371,16 @@ function move(direction) {
   playTrack(state.tracks[nextIndex].id);
 }
 
+function previousTrack() {
+  if (!currentTrack()) return;
+  if (audio.currentTime > 2) {
+    audio.currentTime = 0;
+    if (audio.paused) audio.play().catch(() => {});
+    return;
+  }
+  move(-1);
+}
+
 $('#fileInput').addEventListener('change', async (event) => {
   const files = [...event.target.files];
   const tracks = await Promise.all(files.map(async (file, index) => {
@@ -468,7 +487,7 @@ $('#trackList').addEventListener('click', (event) => {
     event.stopPropagation();
     const id = remove.dataset.remove;
     const track = state.tracks.find(item => item.id === id);
-    if (track) { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); removeCachedArtwork(track.id); }
+    if (track) { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }
     state.tracks = state.tracks.filter(item => item.id !== id);
     deleteStoredTrack(id);
     if (state.currentId === id) { audio.pause(); audio.removeAttribute('src'); state.currentId = null; setPlaying(false); updateNowPlaying(null); }
@@ -490,8 +509,7 @@ $('#coverInput').addEventListener('change', (event) => {
   const track = state.tracks.find(item => item.id === coverTargetId);
   if (file && track) {
     if (track.cover) URL.revokeObjectURL(track.cover);
-    removeCachedArtwork(track.id);
-    track.mediaArtworkUrl = '';
+    track.mediaArtworkDataUrl = '';
     track.coverBlob = file;
     track.cover = URL.createObjectURL(file);
     storeTrack(track);
@@ -508,11 +526,11 @@ document.querySelectorAll('.nav-item').forEach(button => button.addEventListener
 $('#playBtn').addEventListener('click', togglePlay);
 $('#listViewBtn').addEventListener('click', () => { state.view = 'list'; localStorage.setItem('pulsedeck-view', 'list'); render(); });
 $('#gridViewBtn').addEventListener('click', () => { state.view = 'grid'; localStorage.setItem('pulsedeck-view', 'grid'); render(); });
-$('#prevBtn').addEventListener('click', () => move(-1));
+$('#prevBtn').addEventListener('click', previousTrack);
 $('#nextBtn').addEventListener('click', () => move(1));
 $('#shuffleBtn').addEventListener('click', event => { state.shuffle = !state.shuffle; event.currentTarget.classList.toggle('active', state.shuffle); toast(`Shuffle ${state.shuffle ? 'on' : 'off'}`); });
 $('#repeatBtn').addEventListener('click', event => { state.repeat = !state.repeat; event.currentTarget.classList.toggle('active', state.repeat); toast(`Repeat ${state.repeat ? 'on' : 'off'}`); });
-$('#clearBtn').addEventListener('click', () => { state.tracks.forEach(track => { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }); state.tracks = []; clearStoredTracks(); if ('caches' in window) caches.delete('lere-artwork-v1'); state.currentId = null; audio.pause(); audio.removeAttribute('src'); setPlaying(false); updateNowPlaying(null); if ('mediaSession' in navigator) navigator.mediaSession.metadata = null; render(); toast('Library cleared'); });
+$('#clearBtn').addEventListener('click', () => { state.tracks.forEach(track => { URL.revokeObjectURL(track.url); if (track.cover) URL.revokeObjectURL(track.cover); }); state.tracks = []; clearStoredTracks(); state.currentId = null; audio.pause(); audio.removeAttribute('src'); setPlaying(false); updateNowPlaying(null); if ('mediaSession' in navigator) navigator.mediaSession.metadata = null; render(); toast('Library cleared'); });
 $('#volumeBar').addEventListener('input', event => { audio.volume = Number(event.target.value); localStorage.setItem('pulsedeck-volume', event.target.value); });
 $('#seekBar').addEventListener('input', event => { if (audio.duration) audio.currentTime = audio.duration * (Number(event.target.value) / 100); });
 $('#dataBtn').addEventListener('click', () => $('#dataDialog').showModal());
@@ -558,10 +576,8 @@ if ('mediaSession' in navigator) {
   setHandler('play', () => audio.play());
   setHandler('pause', () => audio.pause());
   setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
-  setHandler('previoustrack', () => move(-1));
+  setHandler('previoustrack', previousTrack);
   setHandler('nexttrack', () => move(1));
-  setHandler('seekbackward', details => { audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10)); });
-  setHandler('seekforward', details => { audio.currentTime = Math.min(audio.duration || audio.currentTime + 10, audio.currentTime + (details.seekOffset || 10)); });
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
