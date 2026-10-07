@@ -86,8 +86,9 @@
           <p id="expandedArtist">Upload a track to begin</p>
         </div>
         <div class="queue-panel">
-          <div class="drawer-heading"><div><p class="eyebrow">UP NEXT</p><h2>Queue</h2></div></div>
+          <div class="drawer-heading"><div><p class="eyebrow">LISTENING</p><h2 id="drawerPanelTitle">Queue</h2></div><div class="drawer-tabs" role="tablist"><button id="queueTabBtn" class="active" role="tab" aria-selected="true">Queue</button><button id="lyricsTabBtn" role="tab" aria-selected="false">Lyrics</button></div></div>
           <div id="playerQueue" class="player-queue"></div>
+          <div id="lyricsPanel" class="lyrics-panel" hidden><div id="lyricsContent" class="lyrics-content"></div><button id="addLyricsFromPlayerBtn" class="compact-btn">Add lyrics</button></div>
         </div>
       </div>
     </section>
@@ -143,6 +144,14 @@
   <dialog id="playlistPickerDialog" class="data-dialog">
     <div class="dialog-heading"><div><p class="eyebrow">ADD SONG</p><h2>Choose a playlist</h2></div><button id="closePlaylistPickerBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div id="playlistPicker" class="playlist-picker"></div>
+  </dialog>
+  <dialog id="lyricsDialog" class="data-dialog lyrics-dialog">
+    <form id="lyricsForm">
+      <div class="dialog-heading"><div><p class="eyebrow">SONG LYRICS</p><h2>Edit lyrics</h2></div><button id="closeLyricsBtn" type="button" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <p>Paste ordinary lyrics, or use timestamps such as <strong>[00:12.50]First line</strong> for synchronized scrolling.</p>
+      <div class="edit-fields"><label for="lyricsText">Lyrics<textarea id="lyricsText" rows="12" placeholder="[00:05.00]First lyric line"></textarea></label></div>
+      <div class="dialog-footer"><button id="clearLyricsBtn" type="button" class="dialog-danger">Clear</button><span class="dialog-spacer"></span><button id="cancelLyricsBtn" type="button" class="dialog-secondary">Cancel</button><button type="submit" class="dialog-primary">Save lyrics</button></div>
+    </form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>

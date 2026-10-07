@@ -6,6 +6,7 @@ let coverTargetId = null;
 let editTargetId = null;
 let playlistEditId = null;
 let playlistPickerTrackId = null;
+let lyricsTargetId = null;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -32,7 +33,7 @@ function openLibraryDb() {
 
 async function storeTrack(track) {
   const db = await openLibraryDb();
-  const record = { id: track.id, title: track.title, artist: track.artist, album: track.album, file: track.file, coverBlob: track.coverBlob || null, saved: track.saved, addedAt: track.addedAt };
+  const record = { id: track.id, title: track.title, artist: track.artist, album: track.album, lyrics: track.lyrics || '', file: track.file, coverBlob: track.coverBlob || null, saved: track.saved, addedAt: track.addedAt };
   await new Promise((resolve, reject) => {
     const request = db.transaction('tracks', 'readwrite').objectStore('tracks').put(record);
     request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
@@ -105,6 +106,7 @@ async function exportLibraryData() {
       title: track.title,
       artist: track.artist,
       album: track.album,
+      lyrics: track.lyrics || '',
       saved: track.saved,
       addedAt: track.addedAt,
       audio: { name: track.file.name, type: track.file.type, lastModified: track.file.lastModified, data: await blobToDataUrl(track.file) },
@@ -139,7 +141,7 @@ async function importLibraryData(file) {
       const coverBlob = item.cover?.data ? dataUrlToBlob(item.cover.data) : null;
       const track = {
         id: item.id || crypto.randomUUID(), title: item.title || item.audio.name.replace(/\.[^.]+$/, ''), artist: item.artist || 'Uploaded audio',
-        album: item.album || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), file: audioFile, coverBlob,
+        album: item.album || '', lyrics: item.lyrics || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), file: audioFile, coverBlob,
         url: URL.createObjectURL(audioFile), cover: coverBlob ? URL.createObjectURL(coverBlob) : ''
       };
       const existingIndex = state.tracks.findIndex(existing => existing.id === track.id);
@@ -296,6 +298,41 @@ function updateNowPlaying(track) {
   expandedArtwork.style.backgroundImage = track?.cover ? `url("${track.cover}")` : '';
   expandedArtwork.classList.toggle('has-cover', Boolean(track?.cover));
   if (track) syncMediaSession(track);
+  renderLyrics(track);
+}
+
+function parseLyrics(text = '') {
+  const synced = [];
+  const plain = [];
+  text.split(/\r?\n/).forEach(line => {
+    const matches = [...line.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+    const words = line.replace(/\[[^\]]+\]/g, '').trim();
+    if (matches.length && words) matches.forEach(match => synced.push({ time: Number(match[1]) * 60 + Number(match[2]) + Number(`0.${match[3] || 0}`), text: words }));
+    else if (line.trim()) plain.push(line.trim());
+  });
+  return synced.length ? { synced: true, lines: synced.sort((a, b) => a.time - b.time) } : { synced: false, lines: plain.map(text => ({ text })) };
+}
+
+function renderLyrics(track = currentTrack()) {
+  const content = $('#lyricsContent');
+  const addButton = $('#addLyricsFromPlayerBtn');
+  if (!track?.lyrics) { content.innerHTML = '<div class="lyrics-empty">No lyrics saved for this song.<br>Add plain text or synchronized LRC lyrics.</div>'; addButton.hidden = !track; return; }
+  const parsed = parseLyrics(track.lyrics);
+  content.dataset.synced = String(parsed.synced);
+  content.innerHTML = parsed.lines.map((line, index) => line.time != null
+    ? `<button class="lyric-line" data-lyric-index="${index}" data-time="${line.time}" aria-label="Play from ${formatTime(line.time)}: ${escapeHtml(line.text)}">${escapeHtml(line.text)}</button>`
+    : `<p class="lyric-line" data-lyric-index="${index}">${escapeHtml(line.text)}</p>`).join('');
+  addButton.hidden = false;
+  addButton.textContent = 'Edit lyrics';
+}
+
+function updateSyncedLyrics() {
+  if ($('#lyricsPanel').hidden || $('#lyricsContent').dataset.synced !== 'true') return;
+  const lines = [...$('#lyricsContent').querySelectorAll('[data-time]')];
+  let active = -1;
+  lines.forEach((line, index) => { if (Number(line.dataset.time) <= audio.currentTime) active = index; });
+  lines.forEach((line, index) => line.classList.toggle('active', index === active));
+  if (active >= 0 && lines[active] !== updateSyncedLyrics.last) { updateSyncedLyrics.last = lines[active]; lines[active].scrollIntoView({ block: 'center', behavior: 'smooth' }); }
 }
 
 function recommendationScore(candidate, current) {
@@ -373,6 +410,7 @@ function render() {
         <button class="track-action menu-trigger" data-menu="${track.id}" aria-label="Actions for ${escapeHtml(track.title)}" aria-expanded="${Boolean(track.menuOpen)}"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         <div class="track-menu ${track.menuOpen ? 'open' : ''}">
           <button data-edit="${track.id}"><svg viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>Edit details</button>
+          <button data-lyrics="${track.id}"><svg viewBox="0 0 24 24"><path d="M5 5h14M5 10h14M5 15h9M5 20h6"/></svg>${track.lyrics ? 'Edit lyrics' : 'Add lyrics'}</button>
           <button data-cover="${track.id}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 17 5-5 4 4 2-2 5 4"/></svg>${track.cover ? 'Change cover' : 'Add cover'}</button>
           <button data-add-playlist="${track.id}"><svg viewBox="0 0 24 24"><path d="M5 4h14v17l-7-4-7 4z"/></svg>Add to playlist</button>
           <button data-add-queue="${track.id}"><svg viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7M19 13v7m-3-3h6"/></svg>Add to queue</button>
@@ -441,6 +479,7 @@ $('#fileInput').addEventListener('change', async (event) => {
       title: metadata.title || file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(),
       artist: metadata.artist || 'Uploaded audio',
       album: metadata.album || '',
+      lyrics: '',
       cover: metadata.cover || '',
       coverBlob: metadata.coverBlob || null,
       url: URL.createObjectURL(file),
@@ -529,6 +568,8 @@ $('#trackList').addEventListener('click', (event) => {
     $('#coverInput').click();
     return;
   }
+  const lyrics = event.target.closest('[data-lyrics]');
+  if (lyrics) { event.stopPropagation(); openLyricsDialog(lyrics.dataset.lyrics); return; }
   const addPlaylist = event.target.closest('[data-add-playlist]');
   if (addPlaylist) {
     event.stopPropagation();
@@ -652,6 +693,52 @@ $('#playlistPicker').addEventListener('click', event => {
   if (pick) { const playlist = state.playlists.find(item => item.id === pick.dataset.pickPlaylist); if (playlist && !playlist.trackIds.includes(playlistPickerTrackId)) playlist.trackIds.push(playlistPickerTrackId); saveCollections(); $('#playlistPickerDialog').close(); render(); toast('Added to playlist'); }
   if (event.target.closest('[data-create-from-picker]')) { $('#playlistPickerDialog').close(); openPlaylistDialog(); }
 });
+function setDrawerPanel(panel) {
+  const lyricsOpen = panel === 'lyrics';
+  $('#playerQueue').hidden = lyricsOpen;
+  $('#lyricsPanel').hidden = !lyricsOpen;
+  $('#queueTabBtn').classList.toggle('active', !lyricsOpen);
+  $('#lyricsTabBtn').classList.toggle('active', lyricsOpen);
+  $('#queueTabBtn').setAttribute('aria-selected', String(!lyricsOpen));
+  $('#lyricsTabBtn').setAttribute('aria-selected', String(lyricsOpen));
+  $('#drawerPanelTitle').textContent = lyricsOpen ? 'Lyrics' : 'Queue';
+  if (lyricsOpen) { renderLyrics(); updateSyncedLyrics(); }
+}
+$('#queueTabBtn').addEventListener('click', () => setDrawerPanel('queue'));
+$('#lyricsTabBtn').addEventListener('click', () => setDrawerPanel('lyrics'));
+$('#lyricsContent').addEventListener('click', event => {
+  const line = event.target.closest('[data-time]');
+  if (!line || !currentTrack()) return;
+  audio.currentTime = Number(line.dataset.time);
+  audio.play().catch(() => {});
+  updateSyncedLyrics.last = null;
+  updateSyncedLyrics();
+});
+function openLyricsDialog(id) {
+  const track = state.tracks.find(item => item.id === id);
+  if (!track) return;
+  lyricsTargetId = id;
+  track.menuOpen = false;
+  $('#lyricsText').value = track.lyrics || '';
+  $('#lyricsDialog').showModal();
+  requestAnimationFrame(() => $('#lyricsText').focus());
+}
+function closeLyricsDialog() { $('#lyricsDialog').close(); lyricsTargetId = null; }
+$('#addLyricsFromPlayerBtn').addEventListener('click', () => { if (state.currentId) openLyricsDialog(state.currentId); });
+$('#closeLyricsBtn').addEventListener('click', closeLyricsDialog);
+$('#cancelLyricsBtn').addEventListener('click', closeLyricsDialog);
+$('#lyricsForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const track = state.tracks.find(item => item.id === lyricsTargetId);
+  if (!track) return;
+  track.lyrics = $('#lyricsText').value.trim();
+  await storeTrack(track); closeLyricsDialog(); render(); renderLyrics(track); toast('Lyrics saved');
+});
+$('#clearLyricsBtn').addEventListener('click', async () => {
+  const track = state.tracks.find(item => item.id === lyricsTargetId);
+  if (!track) return;
+  track.lyrics = ''; await storeTrack(track); closeLyricsDialog(); render(); renderLyrics(track); toast('Lyrics cleared');
+});
 $('#playBtn').addEventListener('click', togglePlay);
 $('#listViewBtn').addEventListener('click', () => { state.view = 'list'; localStorage.setItem('pulsedeck-view', 'list'); render(); });
 $('#gridViewBtn').addEventListener('click', () => { state.view = 'grid'; localStorage.setItem('pulsedeck-view', 'grid'); render(); });
@@ -699,6 +786,7 @@ audio.addEventListener('timeupdate', () => {
   if ('mediaSession' in navigator && audio.duration && Number.isFinite(audio.duration)) {
     try { navigator.mediaSession.setPositionState({ duration: audio.duration, playbackRate: audio.playbackRate, position: Math.min(audio.currentTime, audio.duration) }); } catch (_) {}
   }
+  updateSyncedLyrics();
 });
 if ('mediaSession' in navigator) {
   const setHandler = (action, handler) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {} };
