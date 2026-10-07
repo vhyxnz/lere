@@ -27,8 +27,9 @@
       <nav class="nav" aria-label="Library navigation">
         <button class="nav-item active" data-filter="all"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/></svg><span>All music</span></button>
         <button class="nav-item" data-filter="local"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg><span>Device</span></button>
-        <button class="nav-item" data-filter="playlist"><svg viewBox="0 0 24 24"><path d="M4 6h10M4 11h10M4 16h7"/><path d="M18 13v7m0-7 3 2m-3-2-3 2"/></svg><span>My playlist</span></button>
+        <button id="playlistsNav" class="nav-item" data-filter="playlists"><svg viewBox="0 0 24 24"><path d="M4 6h10M4 11h10M4 16h7"/><path d="M18 13v7m0-7 3 2m-3-2-3 2"/></svg><span>Playlists</span></button>
       </nav>
+      <div id="playlistNav" class="playlist-nav" aria-label="Your playlists"></div>
 
       <div class="offline-card">
         <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg>
@@ -62,7 +63,7 @@
       <section class="library" aria-labelledby="library-title">
         <div class="section-heading">
           <div><p class="eyebrow">LIBRARY</p><h2 id="library-title">Your queue</h2></div>
-          <div class="library-tools"><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
+          <div class="library-tools"><button id="editPlaylistBtn" class="compact-btn" hidden>Edit playlist</button><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
         </div>
 
         <div id="emptyState" hidden></div>
@@ -131,6 +132,17 @@
       </div>
       <div class="dialog-footer"><button id="cancelEditBtn" type="button" class="dialog-secondary">Cancel</button><button type="submit" class="dialog-primary">Save changes</button></div>
     </form>
+  </dialog>
+  <dialog id="playlistDialog" class="data-dialog edit-dialog">
+    <form id="playlistForm">
+      <div class="dialog-heading"><div><p class="eyebrow">PLAYLIST</p><h2 id="playlistDialogTitle">New playlist</h2></div><button id="closePlaylistBtn" type="button" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="edit-fields"><label for="playlistName">Playlist name<input id="playlistName" type="text" maxlength="80" required /></label></div>
+      <div class="dialog-footer"><button id="deletePlaylistBtn" type="button" class="dialog-danger" hidden>Delete</button><span class="dialog-spacer"></span><button id="cancelPlaylistBtn" type="button" class="dialog-secondary">Cancel</button><button type="submit" class="dialog-primary">Save</button></div>
+    </form>
+  </dialog>
+  <dialog id="playlistPickerDialog" class="data-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">ADD SONG</p><h2>Choose a playlist</h2></div><button id="closePlaylistPickerBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div id="playlistPicker" class="playlist-picker"></div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
