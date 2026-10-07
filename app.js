@@ -524,6 +524,7 @@ enableReordering($('#trackList'), () => activePlaylist()?.trackIds || []);
 
 function setDrawer(open) {
   $('.player').classList.toggle('expanded', open);
+  if (!open) $('.player').classList.remove('lyrics-mode');
   document.body.classList.toggle('drawer-open', open);
   $('#playerDrawer').setAttribute('aria-hidden', String(!open));
 }
@@ -695,6 +696,7 @@ $('#playlistPicker').addEventListener('click', event => {
 });
 function setDrawerPanel(panel) {
   const lyricsOpen = panel === 'lyrics';
+  $('.player').classList.toggle('lyrics-mode', lyricsOpen);
   $('#playerQueue').hidden = lyricsOpen;
   $('#lyricsPanel').hidden = !lyricsOpen;
   $('#queueTabBtn').classList.toggle('active', !lyricsOpen);
@@ -714,6 +716,25 @@ $('#lyricsContent').addEventListener('click', event => {
   updateSyncedLyrics.last = null;
   updateSyncedLyrics();
 });
+
+let playerTouchStart = null;
+$('.player').addEventListener('touchstart', event => {
+  const touch = event.touches[0];
+  playerTouchStart = { x: touch.clientX, y: touch.clientY, target: event.target };
+}, { passive: true });
+$('.player').addEventListener('touchend', event => {
+  if (!playerTouchStart || !event.changedTouches[0]) return;
+  const touch = event.changedTouches[0];
+  const deltaX = touch.clientX - playerTouchStart.x;
+  const deltaY = touch.clientY - playerTouchStart.y;
+  const player = $('.player');
+  const startedInLyrics = playerTouchStart.target.closest?.('.lyrics-panel');
+  const lyricsAtTop = $('#lyricsPanel').scrollTop <= 2;
+  playerTouchStart = null;
+  if (Math.abs(deltaY) < 55 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.2) return;
+  if (deltaY < 0 && !player.classList.contains('expanded')) setDrawer(true);
+  if (deltaY > 0 && player.classList.contains('expanded') && (!startedInLyrics || lyricsAtTop)) setDrawer(false);
+}, { passive: true });
 function openLyricsDialog(id) {
   const track = state.tracks.find(item => item.id === id);
   if (!track) return;
