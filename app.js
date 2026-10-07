@@ -7,6 +7,7 @@ let editTargetId = null;
 let playlistEditId = null;
 let playlistPickerTrackId = null;
 let lyricsTargetId = null;
+let suppressPlayerClickUntil = 0;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -530,6 +531,7 @@ function setDrawer(open) {
 }
 
 $('.player').addEventListener('click', (event) => {
+  if (Date.now() < suppressPlayerClickUntil) return;
   if (event.target.closest('button,input,label,.player-drawer')) return;
   setDrawer(!$('.player').classList.contains('expanded'));
 });
@@ -719,8 +721,9 @@ $('#lyricsContent').addEventListener('click', event => {
 
 let playerTouchStart = null;
 $('.player').addEventListener('touchstart', event => {
+  if (event.touches.length !== 1) { playerTouchStart = null; return; }
   const touch = event.touches[0];
-  playerTouchStart = { x: touch.clientX, y: touch.clientY, target: event.target };
+  playerTouchStart = { x: touch.clientX, y: touch.clientY, target: event.target, time: Date.now() };
 }, { passive: true });
 $('.player').addEventListener('touchend', event => {
   if (!playerTouchStart || !event.changedTouches[0]) return;
@@ -731,10 +734,11 @@ $('.player').addEventListener('touchend', event => {
   const startedInLyrics = playerTouchStart.target.closest?.('.lyrics-panel');
   const lyricsAtTop = $('#lyricsPanel').scrollTop <= 2;
   playerTouchStart = null;
-  if (Math.abs(deltaY) < 55 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.2) return;
-  if (deltaY < 0 && !player.classList.contains('expanded')) setDrawer(true);
-  if (deltaY > 0 && player.classList.contains('expanded') && (!startedInLyrics || lyricsAtTop)) setDrawer(false);
+  if (Math.abs(deltaY) < 75 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.35) return;
+  if (deltaY < 0 && !player.classList.contains('expanded')) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(true); }
+  if (deltaY > 0 && player.classList.contains('expanded') && (!startedInLyrics || lyricsAtTop)) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(false); }
 }, { passive: true });
+$('.player').addEventListener('touchcancel', () => { playerTouchStart = null; }, { passive: true });
 function openLyricsDialog(id) {
   const track = state.tracks.find(item => item.id === id);
   if (!track) return;
