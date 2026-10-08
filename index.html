@@ -55,7 +55,7 @@
       <section class="recommendations" aria-labelledby="recommendations-title">
         <div class="section-heading">
           <div><p class="eyebrow">FOR YOU</p><h2 id="recommendations-title">From your collection</h2></div>
-          <span class="track-count">Based on uploaded songs</span>
+          <span class="track-count">Based on your listening and uploaded songs</span>
         </div>
         <div id="recommendationGrid" class="recommendation-grid"><div class="recommendation-empty">Upload at least two songs to get recommendations from your collection.</div></div>
       </section>
@@ -63,7 +63,7 @@
       <section class="library" aria-labelledby="library-title">
         <div class="section-heading">
           <div><p class="eyebrow">LIBRARY</p><h2 id="library-title">Your queue</h2></div>
-          <div class="library-tools"><button id="editPlaylistBtn" class="compact-btn" hidden>Edit playlist</button><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
+          <div class="library-tools"><button id="addPlaylistSongsBtn" class="compact-btn playlist-add-btn" hidden><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add songs</button><button id="editPlaylistBtn" class="compact-btn" hidden>Edit playlist</button><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
         </div>
 
         <div id="emptyState" hidden></div>
@@ -144,6 +144,11 @@
   <dialog id="playlistPickerDialog" class="data-dialog">
     <div class="dialog-heading"><div><p class="eyebrow">ADD SONG</p><h2>Choose a playlist</h2></div><button id="closePlaylistPickerBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div id="playlistPicker" class="playlist-picker"></div>
+  </dialog>
+  <dialog id="playlistSongsDialog" class="data-dialog playlist-songs-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">PLAYLIST</p><h2>Add songs</h2></div><button id="closePlaylistSongsBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <p class="playlist-songs-help">Tap songs to add them. Changes are saved immediately.</p>
+    <div id="playlistSongsPicker" class="playlist-songs-picker"></div>
   </dialog>
   <dialog id="lyricsDialog" class="data-dialog lyrics-dialog">
     <form id="lyricsForm">

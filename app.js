@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const audio = $('#audio');
-const state = { tracks: [], playlists: [], queue: [], currentId: null, filter: 'all', selectedPlaylistId: null, shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list' };
+const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list' };
 const icons = { play: '<path d="m9 6 9 6-9 6z"/>', pause: '<path d="M8 6h3v12H8zM14 6h3v12h-3z"/>' };
 let coverTargetId = null;
 let editTargetId = null;
@@ -34,7 +34,7 @@ function openLibraryDb() {
 
 async function storeTrack(track) {
   const db = await openLibraryDb();
-  const record = { id: track.id, title: track.title, artist: track.artist, album: track.album, lyrics: track.lyrics || '', file: track.file, coverBlob: track.coverBlob || null, saved: track.saved, addedAt: track.addedAt };
+  const record = { id: track.id, title: track.title, artist: track.artist, album: track.album, lyrics: track.lyrics || '', file: track.file, coverBlob: track.coverBlob || null, saved: track.saved, addedAt: track.addedAt, playCount: Number(track.playCount) || 0, lastPlayedAt: Number(track.lastPlayedAt) || 0 };
   await new Promise((resolve, reject) => {
     const request = db.transaction('tracks', 'readwrite').objectStore('tracks').put(record);
     request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
@@ -68,7 +68,7 @@ async function restoreLibrary() {
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     db.close();
-    state.tracks = records.sort((a, b) => a.addedAt - b.addedAt).map(record => ({ ...record, url: URL.createObjectURL(record.file), cover: record.coverBlob ? URL.createObjectURL(record.coverBlob) : '' }));
+    state.tracks = records.sort((a, b) => a.addedAt - b.addedAt).map(record => ({ ...record, playCount: Number(record.playCount) || 0, lastPlayedAt: Number(record.lastPlayedAt) || 0, url: URL.createObjectURL(record.file), cover: record.coverBlob ? URL.createObjectURL(record.coverBlob) : '' }));
     const validIds = new Set(state.tracks.map(track => track.id));
     state.playlists.forEach(playlist => { playlist.trackIds = (playlist.trackIds || []).filter(id => validIds.has(id)); });
     state.queue = state.queue.filter(id => validIds.has(id));
@@ -110,6 +110,8 @@ async function exportLibraryData() {
       lyrics: track.lyrics || '',
       saved: track.saved,
       addedAt: track.addedAt,
+      playCount: Number(track.playCount) || 0,
+      lastPlayedAt: Number(track.lastPlayedAt) || 0,
       audio: { name: track.file.name, type: track.file.type, lastModified: track.file.lastModified, data: await blobToDataUrl(track.file) },
       cover: track.coverBlob ? { type: track.coverBlob.type, data: await blobToDataUrl(track.coverBlob) } : null
     })));
@@ -142,7 +144,7 @@ async function importLibraryData(file) {
       const coverBlob = item.cover?.data ? dataUrlToBlob(item.cover.data) : null;
       const track = {
         id: item.id || crypto.randomUUID(), title: item.title || item.audio.name.replace(/\.[^.]+$/, ''), artist: item.artist || 'Uploaded audio',
-        album: item.album || '', lyrics: item.lyrics || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), file: audioFile, coverBlob,
+        album: item.album || '', lyrics: item.lyrics || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), playCount: Number(item.playCount) || 0, lastPlayedAt: Number(item.lastPlayedAt) || 0, file: audioFile, coverBlob,
         url: URL.createObjectURL(audioFile), cover: coverBlob ? URL.createObjectURL(coverBlob) : ''
       };
       const existingIndex = state.tracks.findIndex(existing => existing.id === track.id);
@@ -339,8 +341,8 @@ function updateSyncedLyrics() {
 function recommendationScore(candidate, current) {
   if (!current) return candidate.addedAt;
   const tokens = (name) => new Set(name.toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 2));
-  const currentTokens = tokens(current.title);
-  const overlap = [...tokens(candidate.title)].filter(word => currentTokens.has(word)).length;
+  const currentTokens = tokens(`${current.title} ${current.artist} ${current.album || ''}`);
+  const overlap = [...tokens(`${candidate.title} ${candidate.artist} ${candidate.album || ''}`)].filter(word => currentTokens.has(word)).length;
   const sameFormat = candidate.file.type === current.file.type ? 2 : 0;
   const sizeSimilarity = 1 - Math.min(Math.abs(candidate.file.size - current.file.size) / Math.max(candidate.file.size, current.file.size), 1);
   return overlap * 5 + sameFormat + sizeSimilarity;
@@ -348,26 +350,50 @@ function recommendationScore(candidate, current) {
 
 function getRecommendations() {
   const current = currentTrack();
-  return state.tracks
-    .filter(track => track.id !== state.currentId)
+  const picks = [];
+  const used = new Set();
+  const add = (track, reason) => {
+    if (!track || used.has(track.id) || picks.length >= 4) return;
+    used.add(track.id);
+    picks.push({ track, reason });
+  };
+
+  [...state.tracks]
+    .filter(track => Number(track.playCount) > 0)
+    .sort((a, b) => (Number(b.playCount) - Number(a.playCount)) || (Number(b.lastPlayedAt) - Number(a.lastPlayedAt)))
+    .slice(0, 2)
+    .forEach(track => add(track, `Most played · ${track.playCount} ${track.playCount === 1 ? 'play' : 'plays'}`));
+
+  const recent = [...state.tracks]
+    .filter(track => Number(track.lastPlayedAt) > 0)
+    .sort((a, b) => Number(b.lastPlayedAt) - Number(a.lastPlayedAt));
+  add(recent.find(track => !used.has(track.id)), 'Recently played');
+
+  [...state.tracks]
+    .filter(track => track.id !== current?.id)
     .map(track => ({ track, score: recommendationScore(track, current) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map(item => item.track);
+    .forEach(({ track }) => add(track, current ? `More like ${current.title}` : 'From your collection'));
+
+  [...state.tracks]
+    .sort((a, b) => Number(b.addedAt) - Number(a.addedAt))
+    .forEach(track => add(track, 'Recently added'));
+
+  return picks;
 }
 
 function renderRecommendations() {
   const grid = $('#recommendationGrid');
   const picks = getRecommendations();
-  if (state.tracks.length < 2 || !picks.length) {
-    grid.innerHTML = '<div class="recommendation-empty">Upload at least two songs to get recommendations from your collection.</div>';
+  if (!picks.length) {
+    grid.innerHTML = '<div class="recommendation-empty">Upload music to get recommendations from your collection.</div>';
     return;
   }
   const colors = ['red', 'coral', 'blue', 'amber'];
-  grid.innerHTML = picks.map((track, index) => `
+  grid.innerHTML = picks.map(({ track, reason }, index) => `
     <button class="recommendation-card ${colors[index]} ${track.cover ? 'has-cover' : ''}" ${track.cover ? `style="background-image:linear-gradient(0deg,#090a0ee8,#090a0e22),url('${track.cover}')"` : ''} data-recommend="${track.id}" aria-label="Play recommended track ${escapeHtml(track.title)}">
       <span>${escapeHtml(track.title)}</span>
-      <small>${currentTrack() ? 'Similar to what you are playing' : 'From your uploaded collection'}</small>
+      <small>${escapeHtml(reason)}</small>
       <svg viewBox="0 0 24 24"><path d="m9 6 9 6-9 6z"/></svg>
     </button>`).join('');
 }
@@ -401,6 +427,7 @@ function render() {
   $('#gridViewBtn').classList.toggle('active', state.view === 'grid');
   $('#library-title').textContent = state.filter === 'playlist' && playlist ? playlist.name : state.filter === 'local' ? 'On this device' : 'Your library';
   $('#editPlaylistBtn').hidden = !(state.filter === 'playlist' && playlist);
+  $('#addPlaylistSongsBtn').hidden = !(state.filter === 'playlist' && playlist);
   $('#trackCount').textContent = `${visible.length} ${visible.length === 1 ? 'track' : 'tracks'}`;
   $('#emptyState').hidden = visible.length > 0;
   $('#trackList').innerHTML = visible.map((track, index) => `
@@ -426,28 +453,42 @@ function render() {
   renderPlayerQueue();
 }
 
-function playTrack(id) {
+function playTrack(id, context = null) {
   const track = state.tracks.find(item => item.id === id);
   if (!track) return;
+  if (context) state.playbackContext = context;
   audio.pause();
   state.currentId = id;
   audio.src = track.url;
   audio.volume = Number($('#volumeBar').value);
   updateNowPlaying(track);
-  audio.play().then(() => setPlaying(true)).catch(() => toast('Could not play this audio file.'));
+  audio.play().then(() => {
+    setPlaying(true);
+    track.playCount = (Number(track.playCount) || 0) + 1;
+    track.lastPlayedAt = Date.now();
+    storeTrack(track).catch(() => {});
+    renderRecommendations();
+  }).catch(() => toast('Could not play this audio file.'));
   render();
 }
 
 function togglePlay() {
   const track = currentTrack();
-  if (!track) { if (state.tracks[0]) playTrack(state.tracks[0].id); return; }
+  if (!track) { if (state.tracks[0]) playTrack(state.tracks[0].id, { type: 'library', id: null }); return; }
   if (audio.paused) audio.play(); else audio.pause();
 }
 
 function move(direction) {
-  const order = state.queue.length ? state.queue.filter(id => state.tracks.some(track => track.id === id)) : state.tracks.map(track => track.id);
+  let order;
+  if (state.playbackContext.type === 'playlist') {
+    order = state.playlists.find(playlist => playlist.id === state.playbackContext.id)?.trackIds || [];
+  } else if (state.playbackContext.type === 'queue') {
+    order = state.queue;
+  } else order = state.tracks.map(track => track.id);
+  order = order.filter(id => state.tracks.some(track => track.id === id));
   if (!order.length) return;
   const currentIndex = order.indexOf(state.currentId);
+  if (currentIndex < 0) { playTrack(order[direction > 0 ? 0 : order.length - 1]); return; }
   const nextIndex = state.shuffle ? Math.floor(Math.random() * order.length) : (currentIndex + direction + order.length) % order.length;
   playTrack(order[nextIndex]);
 }
@@ -494,7 +535,9 @@ $('#fileInput').addEventListener('change', async (event) => {
       url: URL.createObjectURL(file),
       file,
       saved: false,
-      addedAt: Date.now() + index
+      addedAt: Date.now() + index,
+      playCount: 0,
+      lastPlayedAt: 0
     };
   }));
   state.tracks.push(...tracks);
@@ -506,12 +549,12 @@ $('#fileInput').addEventListener('change', async (event) => {
 
 $('#recommendationGrid').addEventListener('click', (event) => {
   const card = event.target.closest('[data-recommend]');
-  if (card) playTrack(card.dataset.recommend);
+  if (card) playTrack(card.dataset.recommend, { type: 'library', id: null });
 });
 
 $('#playerQueue').addEventListener('click', (event) => {
   const play = event.target.closest('[data-play-queue]');
-  if (play) { playTrack(play.dataset.playQueue); return; }
+  if (play) { playTrack(play.dataset.playQueue, { type: 'queue', id: null }); return; }
   const up = event.target.closest('[data-queue-up]');
   const down = event.target.closest('[data-queue-down]');
   const remove = event.target.closest('[data-queue-remove]');
@@ -627,7 +670,7 @@ $('#trackList').addEventListener('click', (event) => {
     return;
   }
   const row = event.target.closest('[data-id]');
-  if (row) playTrack(row.dataset.id);
+  if (row) playTrack(row.dataset.id, state.filter === 'playlist' && activePlaylist() ? { type: 'playlist', id: state.selectedPlaylistId } : { type: 'library', id: null });
 });
 document.addEventListener('click', (event) => {
   if (!event.target.closest('.track-actions') && state.tracks.some(track => track.menuOpen)) {
@@ -653,7 +696,7 @@ $('#coverInput').addEventListener('change', (event) => {
   coverTargetId = null;
 });
 
-$('#trackList').addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-id]')) { event.preventDefault(); playTrack(event.target.dataset.id); } });
+$('#trackList').addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-id]')) { event.preventDefault(); playTrack(event.target.dataset.id, state.filter === 'playlist' && activePlaylist() ? { type: 'playlist', id: state.selectedPlaylistId } : { type: 'library', id: null }); } });
 document.querySelectorAll('.nav-item').forEach(button => button.addEventListener('click', () => {
   document.querySelector('.nav-item.active')?.classList.remove('active');
   button.classList.add('active');
@@ -681,6 +724,35 @@ function openPlaylistDialog(id = null) {
 }
 function closePlaylistDialog() { $('#playlistDialog').close(); playlistEditId = null; }
 $('#editPlaylistBtn').addEventListener('click', () => openPlaylistDialog(state.selectedPlaylistId));
+function renderPlaylistSongsPicker() {
+  const playlist = activePlaylist();
+  const picker = $('#playlistSongsPicker');
+  if (!playlist || !state.tracks.length) {
+    picker.innerHTML = '<div class="playlist-picker-empty">Upload songs first, then add them here.</div>';
+    return;
+  }
+  picker.innerHTML = state.tracks.map(track => {
+    const added = playlist.trackIds.includes(track.id);
+    return `<button data-toggle-playlist-song="${track.id}" class="${added ? 'added' : ''}" aria-pressed="${added}">
+      <span class="picker-cover" ${track.cover ? `style="background-image:url('${track.cover}')"` : ''}>${track.cover ? '' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>'}</span>
+      <span class="picker-song-copy"><strong>${escapeHtml(track.title)}</strong><small>${escapeHtml(track.artist)}</small></span>
+      <span class="picker-check"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span>
+    </button>`;
+  }).join('');
+}
+$('#addPlaylistSongsBtn').addEventListener('click', () => { renderPlaylistSongsPicker(); $('#playlistSongsDialog').showModal(); });
+$('#closePlaylistSongsBtn').addEventListener('click', () => $('#playlistSongsDialog').close());
+$('#playlistSongsPicker').addEventListener('click', event => {
+  const button = event.target.closest('[data-toggle-playlist-song]');
+  const playlist = activePlaylist();
+  if (!button || !playlist) return;
+  const id = button.dataset.togglePlaylistSong;
+  if (playlist.trackIds.includes(id)) playlist.trackIds = playlist.trackIds.filter(trackId => trackId !== id);
+  else playlist.trackIds.push(id);
+  saveCollections();
+  renderPlaylistSongsPicker();
+  render();
+});
 $('#closePlaylistBtn').addEventListener('click', closePlaylistDialog);
 $('#cancelPlaylistBtn').addEventListener('click', closePlaylistDialog);
 $('#playlistForm').addEventListener('submit', event => {
@@ -693,6 +765,7 @@ $('#playlistForm').addEventListener('submit', event => {
 });
 $('#deletePlaylistBtn').addEventListener('click', () => {
   if (!playlistEditId) return;
+  if (state.playbackContext.type === 'playlist' && state.playbackContext.id === playlistEditId) state.playbackContext = { type: 'library', id: null };
   state.playlists = state.playlists.filter(item => item.id !== playlistEditId);
   state.selectedPlaylistId = state.playlists[0]?.id || null;
   state.filter = state.selectedPlaylistId ? 'playlist' : 'all';
