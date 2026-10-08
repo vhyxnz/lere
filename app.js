@@ -456,7 +456,16 @@ function render() {
 function playTrack(id, context = null) {
   const track = state.tracks.find(item => item.id === id);
   if (!track) return;
-  if (context) state.playbackContext = context;
+  if (context && context.type !== 'queue') {
+    const sourceOrder = context.type === 'playlist'
+      ? state.playlists.find(playlist => playlist.id === context.id)?.trackIds || []
+      : state.tracks.map(item => item.id);
+    const validOrder = sourceOrder.filter(trackId => state.tracks.some(item => item.id === trackId));
+    const startIndex = validOrder.indexOf(id);
+    state.queue = startIndex >= 0 ? [...validOrder.slice(startIndex), ...validOrder.slice(0, startIndex)] : [id, ...validOrder];
+    state.playbackContext = { type: 'queue', id: null };
+    saveCollections();
+  } else if (context) state.playbackContext = context;
   audio.pause();
   state.currentId = id;
   audio.src = track.url;
@@ -635,7 +644,18 @@ $('#trackList').addEventListener('click', (event) => {
     return;
   }
   const addQueue = event.target.closest('[data-add-queue]');
-  if (addQueue) { event.stopPropagation(); const id = addQueue.dataset.addQueue; if (!state.queue.includes(id)) state.queue.push(id); saveCollections(); state.tracks.forEach(track => { track.menuOpen = false; }); render(); toast('Added to queue'); return; }
+  if (addQueue) {
+    event.stopPropagation();
+    const id = addQueue.dataset.addQueue;
+    if (state.currentId && !state.queue.includes(state.currentId)) state.queue.unshift(state.currentId);
+    if (!state.queue.includes(id)) state.queue.push(id);
+    if (state.currentId) state.playbackContext = { type: 'queue', id: null };
+    saveCollections();
+    state.tracks.forEach(track => { track.menuOpen = false; });
+    render();
+    toast('Added to queue');
+    return;
+  }
   const removePlaylist = event.target.closest('[data-remove-playlist]');
   if (removePlaylist) { event.stopPropagation(); const playlist = activePlaylist(); if (playlist) playlist.trackIds = playlist.trackIds.filter(id => id !== removePlaylist.dataset.removePlaylist); saveCollections(); render(); toast('Removed from playlist'); return; }
   const playlistUp = event.target.closest('[data-playlist-up]');
