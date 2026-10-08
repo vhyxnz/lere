@@ -471,6 +471,7 @@ function previousTrack() {
 }
 
 $('#fileInput').addEventListener('change', async (event) => {
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   const files = [...event.target.files];
   const tracks = await Promise.all(files.map(async (file, index) => {
     let metadata = {};
@@ -833,5 +834,10 @@ if (localStorage.getItem('pulsedeck-theme') === 'light') document.body.classList
 restoreCollections();
 restoreLibrary();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+      if (navigator.onLine) registration.update().catch(() => {});
+    } catch (_) {}
+  });
 }

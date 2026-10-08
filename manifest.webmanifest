@@ -1,10 +1,12 @@
 {
   "name": "Lere",
+  "id": "./",
   "short_name": "Lere",
   "description": "A private, offline-first music player for your own collection.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#0b0d12",
   "theme_color": "#ef233c",
