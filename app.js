@@ -460,6 +460,11 @@ function moveItem(list, id, direction) {
   return true;
 }
 
+function isAudioFile(file) {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  return file.type.startsWith('audio/') || ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'oga', 'opus', 'webm'].includes(extension);
+}
+
 function previousTrack() {
   if (!currentTrack()) return;
   if (audio.currentTime > 2) {
@@ -472,7 +477,9 @@ function previousTrack() {
 
 $('#fileInput').addEventListener('change', async (event) => {
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
-  const files = [...event.target.files];
+  const selectedFiles = [...event.target.files];
+  const files = selectedFiles.filter(isAudioFile);
+  if (!files.length && selectedFiles.length) { toast('Choose an audio file from the Files app.'); event.target.value = ''; return; }
   const tracks = await Promise.all(files.map(async (file, index) => {
     let metadata = {};
     try { metadata = await readEmbeddedMetadata(file); } catch (_) {}
@@ -493,7 +500,7 @@ $('#fileInput').addEventListener('change', async (event) => {
   state.tracks.push(...tracks);
   await Promise.all(tracks.map(storeTrack));
   render();
-  if (files.length) toast(`${files.length} ${files.length === 1 ? 'track' : 'tracks'} added`);
+  if (files.length) toast(`${files.length} ${files.length === 1 ? 'track' : 'tracks'} added${files.length < selectedFiles.length ? '; non-audio files skipped' : ''}`);
   event.target.value = '';
 });
 
