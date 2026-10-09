@@ -985,9 +985,15 @@ if ('mediaSession' in navigator) {
   setHandler('pause', () => audio.pause());
   setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
   setHandler('previoustrack', previousTrack);
-  setHandler('nexttrack', () => { if (document.hidden) move(1); });
-  setHandler('seekbackward', details => { audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10)); });
-  setHandler('seekforward', details => { if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10)); });
+  setHandler('nexttrack', () => move(1));
+  setHandler('seekbackward', details => {
+    if (document.hidden) previousTrack();
+    else audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10));
+  });
+  setHandler('seekforward', details => {
+    if (document.hidden) move(1);
+    else if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10));
+  });
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
 document.addEventListener('visibilitychange', () => {
