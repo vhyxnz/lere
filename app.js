@@ -10,6 +10,7 @@ let lyricsTargetId = null;
 let suppressPlayerClickUntil = 0;
 let playbackStartedAt = 0;
 let lastStablePlaybackTime = 0;
+let playbackRecoveryCount = 0;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -70,7 +71,7 @@ async function restoreLibrary() {
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     db.close();
-    state.tracks = records.sort((a, b) => a.addedAt - b.addedAt).map(record => ({ ...record, playCount: Number(record.playCount) || 0, lastPlayedAt: Number(record.lastPlayedAt) || 0, url: URL.createObjectURL(record.file), cover: record.coverBlob ? URL.createObjectURL(record.coverBlob) : '' }));
+    state.tracks = records.sort((a, b) => a.addedAt - b.addedAt).map(record => ({ ...record, playCount: Number(record.playCount) || 0, lastPlayedAt: Number(record.lastPlayedAt) || 0, url: createAudioUrl(record.file), cover: record.coverBlob ? URL.createObjectURL(record.coverBlob) : '' }));
     const validIds = new Set(state.tracks.map(track => track.id));
     state.playlists.forEach(playlist => { playlist.trackIds = (playlist.trackIds || []).filter(id => validIds.has(id)); });
     state.queue = state.queue.filter(id => validIds.has(id));
@@ -99,6 +100,16 @@ function dataUrlToBlob(dataUrl) {
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return new Blob([bytes], { type: mime });
+}
+
+function audioMimeType(file) {
+  if (file?.type?.startsWith('audio/')) return file.type;
+  const extension = file?.name?.split('.').pop()?.toLowerCase();
+  return ({ mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', webm: 'audio/webm' })[extension] || file?.type || 'audio/mpeg';
+}
+
+function createAudioUrl(file) {
+  return URL.createObjectURL(file.type === audioMimeType(file) ? file : new Blob([file], { type: audioMimeType(file) }));
 }
 
 async function exportLibraryData() {
@@ -147,7 +158,7 @@ async function importLibraryData(file) {
       const track = {
         id: item.id || crypto.randomUUID(), title: item.title || item.audio.name.replace(/\.[^.]+$/, ''), artist: item.artist || 'Uploaded audio',
         album: item.album || '', lyrics: item.lyrics || '', saved: Boolean(item.saved), addedAt: item.addedAt || Date.now(), playCount: Number(item.playCount) || 0, lastPlayedAt: Number(item.lastPlayedAt) || 0, file: audioFile, coverBlob,
-        url: URL.createObjectURL(audioFile), cover: coverBlob ? URL.createObjectURL(coverBlob) : ''
+        url: createAudioUrl(audioFile), cover: coverBlob ? URL.createObjectURL(coverBlob) : ''
       };
       const existingIndex = state.tracks.findIndex(existing => existing.id === track.id);
       if (existingIndex >= 0) {
@@ -472,7 +483,11 @@ function playTrack(id, context = null) {
   state.currentId = id;
   playbackStartedAt = Date.now();
   lastStablePlaybackTime = 0;
+  playbackRecoveryCount = 0;
+  if (track.url) URL.revokeObjectURL(track.url);
+  track.url = createAudioUrl(track.file);
   audio.src = track.url;
+  audio.load();
   audio.volume = Number($('#volumeBar').value);
   updateNowPlaying(track);
   audio.play().then(() => {
@@ -545,7 +560,7 @@ $('#fileInput').addEventListener('change', async (event) => {
       lyrics: '',
       cover: metadata.cover || '',
       coverBlob: metadata.coverBlob || null,
-      url: URL.createObjectURL(file),
+      url: createAudioUrl(file),
       file,
       saved: false,
       addedAt: Date.now() + index,
@@ -912,10 +927,25 @@ audio.addEventListener('ended', () => {
   const duration = audio.duration;
   const endedNearFinish = Number.isFinite(duration) && duration > 0 && audio.currentTime >= duration - 1.25;
   const playedLongEnough = Date.now() - playbackStartedAt >= Math.min(8000, Math.max(0, (duration - 1) * 1000));
-  if (!endedNearFinish || !playedLongEnough) {
+  const track = currentTrack();
+  const minimumPlausibleDuration = track?.file?.size ? Math.max(8, (track.file.size * 8) / 3000000) : 8;
+  const suspiciouslyShort = Number.isFinite(duration) && duration < minimumPlausibleDuration;
+  if (!endedNearFinish || !playedLongEnough || suspiciouslyShort) {
     const resumeAt = Math.max(0, Math.min(lastStablePlaybackTime, Number.isFinite(duration) ? duration - 0.25 : lastStablePlaybackTime));
-    audio.currentTime = resumeAt;
-    audio.play().catch(() => toast('Playback was interrupted. Tap play to continue.'));
+    if (!track || playbackRecoveryCount >= 2) {
+      toast('Playback was interrupted. Tap play to retry this song.');
+      return;
+    }
+    playbackRecoveryCount += 1;
+    if (track.url) URL.revokeObjectURL(track.url);
+    track.url = createAudioUrl(track.file);
+    audio.src = track.url;
+    audio.load();
+    audio.addEventListener('loadedmetadata', () => {
+      const safeDuration = Number.isFinite(audio.duration) ? audio.duration : resumeAt + 1;
+      audio.currentTime = Math.max(0, Math.min(resumeAt, safeDuration - 0.25));
+      audio.play().catch(() => toast('Playback was interrupted. Tap play to continue.'));
+    }, { once: true });
     return;
   }
   state.repeat ? playTrack(state.currentId) : move(1);
@@ -936,7 +966,7 @@ if ('mediaSession' in navigator) {
   setHandler('pause', () => audio.pause());
   setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
   setHandler('previoustrack', previousTrack);
-  setHandler('nexttrack', () => move(1));
+  setHandler('nexttrack', () => { if (document.hidden) move(1); });
   setHandler('seekbackward', details => { audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10)); });
   setHandler('seekforward', details => { if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10)); });
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
