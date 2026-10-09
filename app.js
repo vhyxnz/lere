@@ -292,14 +292,29 @@ async function mediaArtwork(track) {
 async function syncMediaSession(track, playbackState = audio.paused ? 'paused' : 'playing') {
   if (!('mediaSession' in navigator) || !track || typeof MediaMetadata === 'undefined') return;
   const publish = (artwork) => {
-    try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library', artwork }); }
+    const metadata = { title: track.title, artist: track.artist, album: track.album || 'Lere Library' };
+    if (artwork?.length) metadata.artwork = artwork;
+    try { navigator.mediaSession.metadata = new MediaMetadata(metadata); }
     catch (_) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: track.album || 'Lere Library' }); } catch (_) {} }
   };
+  publish();
+  try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
   try {
     const artwork = await mediaArtwork(track);
     if (currentTrack()?.id === track.id) publish([artwork]);
   } catch (_) { publish([{ src: new URL('./icon-512.png', window.location.href).href, sizes: '512x512', type: 'image/png' }]); }
   try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
+}
+
+function syncMediaPosition() {
+  if (!('mediaSession' in navigator) || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      playbackRate: audio.playbackRate || 1,
+      position: Math.max(0, Math.min(audio.currentTime, audio.duration))
+    });
+  } catch (_) {}
 }
 
 function updateNowPlaying(track) {
@@ -313,7 +328,13 @@ function updateNowPlaying(track) {
   artwork.classList.toggle('has-cover', Boolean(track?.cover));
   expandedArtwork.style.backgroundImage = track?.cover ? `url("${track.cover}")` : '';
   expandedArtwork.classList.toggle('has-cover', Boolean(track?.cover));
-  if (track) syncMediaSession(track);
+  if (track) {
+    audio.title = `${track.title} — ${track.artist}`;
+    syncMediaSession(track);
+  } else {
+    audio.removeAttribute('title');
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch (_) {} }
+  }
   renderLyrics(track);
 }
 
@@ -920,9 +941,9 @@ $('#editForm').addEventListener('submit', async event => {
 });
 $('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
 audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(currentTrack(), 'playing'); render(); });
-audio.addEventListener('playing', () => syncMediaSession(currentTrack(), 'playing'));
+audio.addEventListener('playing', () => { syncMediaSession(currentTrack(), 'playing'); syncMediaPosition(); });
 audio.addEventListener('pause', () => { setPlaying(false); syncMediaSession(currentTrack(), 'paused'); });
-audio.addEventListener('loadedmetadata', () => syncMediaSession(currentTrack(), audio.paused ? 'paused' : 'playing'));
+audio.addEventListener('loadedmetadata', () => { syncMediaSession(currentTrack(), audio.paused ? 'paused' : 'playing'); syncMediaPosition(); });
 audio.addEventListener('ended', () => {
   const duration = audio.duration;
   const endedNearFinish = Number.isFinite(duration) && duration > 0 && audio.currentTime >= duration - 1.25;
@@ -955,9 +976,7 @@ audio.addEventListener('timeupdate', () => {
   $('#currentTime').textContent = formatTime(audio.currentTime);
   $('#duration').textContent = formatTime(audio.duration);
   $('#seekBar').value = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
-  if ('mediaSession' in navigator && audio.duration && Number.isFinite(audio.duration)) {
-    try { navigator.mediaSession.setPositionState({ duration: audio.duration, playbackRate: audio.playbackRate, position: Math.min(audio.currentTime, audio.duration) }); } catch (_) {}
-  }
+  syncMediaPosition();
   updateSyncedLyrics();
 });
 if ('mediaSession' in navigator) {
@@ -971,6 +990,10 @@ if ('mediaSession' in navigator) {
   setHandler('seekforward', details => { if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10)); });
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
+document.addEventListener('visibilitychange', () => {
+  const track = currentTrack();
+  if (track) { syncMediaSession(track, audio.paused ? 'paused' : 'playing'); syncMediaPosition(); }
+});
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
 const savedVolume = localStorage.getItem('pulsedeck-volume');
 if (savedVolume !== null) $('#volumeBar').value = savedVolume;
