@@ -8,6 +8,8 @@ let playlistEditId = null;
 let playlistPickerTrackId = null;
 let lyricsTargetId = null;
 let suppressPlayerClickUntil = 0;
+let playbackStartedAt = 0;
+let lastStablePlaybackTime = 0;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -468,6 +470,8 @@ function playTrack(id, context = null) {
   } else if (context) state.playbackContext = context;
   audio.pause();
   state.currentId = id;
+  playbackStartedAt = Date.now();
+  lastStablePlaybackTime = 0;
   audio.src = track.url;
   audio.volume = Number($('#volumeBar').value);
   updateNowPlaying(track);
@@ -904,8 +908,20 @@ audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(curren
 audio.addEventListener('playing', () => syncMediaSession(currentTrack(), 'playing'));
 audio.addEventListener('pause', () => { setPlaying(false); syncMediaSession(currentTrack(), 'paused'); });
 audio.addEventListener('loadedmetadata', () => syncMediaSession(currentTrack(), audio.paused ? 'paused' : 'playing'));
-audio.addEventListener('ended', () => state.repeat ? playTrack(state.currentId) : move(1));
+audio.addEventListener('ended', () => {
+  const duration = audio.duration;
+  const endedNearFinish = Number.isFinite(duration) && duration > 0 && audio.currentTime >= duration - 1.25;
+  const playedLongEnough = Date.now() - playbackStartedAt >= Math.min(8000, Math.max(0, (duration - 1) * 1000));
+  if (!endedNearFinish || !playedLongEnough) {
+    const resumeAt = Math.max(0, Math.min(lastStablePlaybackTime, Number.isFinite(duration) ? duration - 0.25 : lastStablePlaybackTime));
+    audio.currentTime = resumeAt;
+    audio.play().catch(() => toast('Playback was interrupted. Tap play to continue.'));
+    return;
+  }
+  state.repeat ? playTrack(state.currentId) : move(1);
+});
 audio.addEventListener('timeupdate', () => {
+  if (!audio.ended && Number.isFinite(audio.currentTime)) lastStablePlaybackTime = audio.currentTime;
   $('#currentTime').textContent = formatTime(audio.currentTime);
   $('#duration').textContent = formatTime(audio.duration);
   $('#seekBar').value = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
@@ -921,10 +937,8 @@ if ('mediaSession' in navigator) {
   setHandler('stop', () => { audio.pause(); audio.currentTime = 0; try { navigator.mediaSession.playbackState = 'none'; } catch (_) {} });
   setHandler('previoustrack', previousTrack);
   setHandler('nexttrack', () => move(1));
-  // iOS may render seek glyphs for web audio even when track actions are
-  // registered. Map those platform actions to the same music navigation.
-  setHandler('seekbackward', previousTrack);
-  setHandler('seekforward', () => move(1));
+  setHandler('seekbackward', details => { audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10)); });
+  setHandler('seekforward', details => { if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10)); });
   setHandler('seekto', details => { if (details.seekTime != null) audio.currentTime = details.seekTime; });
 }
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
