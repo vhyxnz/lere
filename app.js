@@ -112,6 +112,23 @@ function createAudioUrl(file) {
   return URL.createObjectURL(file.type === audioMimeType(file) ? file : new Blob([file], { type: audioMimeType(file) }));
 }
 
+function loadTrackIntoAudio(track) {
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.replaceChildren();
+  const source = document.createElement('source');
+  if (navigator.serviceWorker?.controller) {
+    source.src = new URL(`./__lere_audio__/${encodeURIComponent(track.id)}`, window.location.href).href;
+  } else {
+    if (track.url) URL.revokeObjectURL(track.url);
+    track.url = createAudioUrl(track.file);
+    source.src = track.url;
+  }
+  source.type = audioMimeType(track.file);
+  audio.append(source);
+  audio.load();
+}
+
 async function exportLibraryData() {
   try {
     $('#exportDataBtn').disabled = true;
@@ -500,15 +517,11 @@ function playTrack(id, context = null) {
     state.playbackContext = { type: 'queue', id: null };
     saveCollections();
   } else if (context) state.playbackContext = context;
-  audio.pause();
   state.currentId = id;
   playbackStartedAt = Date.now();
   lastStablePlaybackTime = 0;
   playbackRecoveryCount = 0;
-  if (track.url) URL.revokeObjectURL(track.url);
-  track.url = createAudioUrl(track.file);
-  audio.src = track.url;
-  audio.load();
+  loadTrackIntoAudio(track);
   audio.volume = Number($('#volumeBar').value);
   updateNowPlaying(track);
   audio.play().then(() => {
@@ -725,7 +738,7 @@ $('#trackList').addEventListener('click', (event) => {
     state.queue = state.queue.filter(trackId => trackId !== id);
     saveCollections();
     deleteStoredTrack(id);
-    if (state.currentId === id) { audio.pause(); audio.removeAttribute('src'); state.currentId = null; setPlaying(false); updateNowPlaying(null); }
+    if (state.currentId === id) { audio.pause(); audio.removeAttribute('src'); audio.replaceChildren(); state.currentId = null; setPlaying(false); updateNowPlaying(null); }
     render();
     return;
   }
@@ -958,10 +971,7 @@ audio.addEventListener('ended', () => {
       return;
     }
     playbackRecoveryCount += 1;
-    if (track.url) URL.revokeObjectURL(track.url);
-    track.url = createAudioUrl(track.file);
-    audio.src = track.url;
-    audio.load();
+    loadTrackIntoAudio(track);
     audio.addEventListener('loadedmetadata', () => {
       const safeDuration = Number.isFinite(audio.duration) ? audio.duration : resumeAt + 1;
       audio.currentTime = Math.max(0, Math.min(resumeAt, safeDuration - 0.25));
