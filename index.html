@@ -46,7 +46,7 @@
         </div>
         <div class="header-actions">
           <button id="dataBtn" class="icon-btn" aria-label="Import or export data" title="Import or export data"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></button>
-          <button id="themeBtn" class="icon-btn" aria-label="Toggle color theme" title="Toggle color theme"><svg class="moon-icon" viewBox="0 0 24 24"><path d="M20 15.5A8 8 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button>
+          <button id="themeBtn" class="icon-btn" aria-label="Appearance settings" title="Appearance settings"><svg class="moon-icon" viewBox="0 0 24 24"><path d="M20 15.5A8 8 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button>
           <input id="fileInput" type="file" accept=".mp3,.m4a,.aac,.wav,.flac,.ogg,.oga,.opus,.webm,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/x-wav,audio/flac,audio/ogg,audio/webm" multiple hidden />
           <input id="coverInput" type="file" accept="image/*" hidden />
           <input id="importInput" type="file" hidden />
@@ -64,8 +64,9 @@
       <section class="library" aria-labelledby="library-title">
         <div class="section-heading">
           <div><p class="eyebrow">LIBRARY</p><h2 id="library-title">Your queue</h2></div>
-          <div class="library-tools"><button id="addPlaylistSongsBtn" class="compact-btn playlist-add-btn" hidden><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add songs</button><button id="editPlaylistBtn" class="compact-btn" hidden>Edit playlist</button><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
+          <div class="library-tools"><button id="selectTracksBtn" class="compact-btn">Select</button><button id="addPlaylistSongsBtn" class="compact-btn playlist-add-btn" hidden><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add songs</button><button id="editPlaylistBtn" class="compact-btn" hidden>Edit playlist</button><span id="trackCount" class="track-count">0 tracks</span><div class="view-toggle" aria-label="Library view"><button id="listViewBtn" class="active" aria-label="List view" title="List view"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button><button id="gridViewBtn" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button></div></div>
         </div>
+        <div id="bulkToolbar" class="bulk-toolbar" hidden><strong id="bulkCount">0 selected</strong><button id="bulkSelectAllBtn">Select all</button><button id="bulkPlaylistBtn">Add to playlist</button><button id="bulkEditBtn">Edit artist</button><button id="bulkRemovePlaylistBtn" hidden>Remove from playlist</button><button id="bulkDeleteBtn" class="danger">Delete</button><button id="bulkCancelBtn">Done</button></div>
 
         <div id="emptyState" hidden></div>
 
@@ -123,8 +124,19 @@
     <div class="data-actions">
       <button id="exportDataBtn"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg><span><strong>Export data</strong><small>Download a complete Lere backup</small></span></button>
       <label id="importDataBtn" for="importInput" role="button" tabindex="0"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 15v5h14v-5"/></svg><span><strong>Import data</strong><small>Select a .lere or .lere.json backup</small></span></label>
+      <button id="storageBtn"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v12c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/></svg><span><strong>Storage manager</strong><small>Review space usage and large or missing files</small></span></button>
+      <button id="recoveryBtn"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span><strong>Recovery mode</strong><small>Rebuild the mobile audio session</small></span></button>
     </div>
   </dialog>
+  <dialog id="themeDialog" class="data-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">APPEARANCE</p><h2>Theme options</h2></div><button id="closeThemeBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="settings-fields"><label>Theme<select id="themeMode"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option><option value="oled">OLED black</option></select></label><label>Accent color<input id="accentColor" type="color" value="#ef233c" /></label><label class="switch-row"><span><strong>Compact density</strong><small>Fit more songs on screen</small></span><input id="compactMode" type="checkbox" /></label></div>
+  </dialog>
+  <dialog id="storageDialog" class="data-dialog storage-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">DEVICE STORAGE</p><h2>Storage manager</h2></div><button id="closeStorageBtn" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div id="storageSummary" class="storage-summary"></div><div id="storageTracks" class="storage-tracks"></div>
+  </dialog>
+  <dialog id="bulkEditDialog" class="data-dialog edit-dialog"><form id="bulkEditForm"><div class="dialog-heading"><div><p class="eyebrow">BULK EDIT</p><h2>Edit selected songs</h2></div><button id="closeBulkEditBtn" type="button" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="edit-fields"><label>Artist for all selected songs<input id="bulkArtist" type="text" maxlength="180" required /></label></div><div class="dialog-footer"><button id="cancelBulkEditBtn" type="button" class="dialog-secondary">Cancel</button><button type="submit" class="dialog-primary">Apply</button></div></form></dialog>
   <dialog id="editDialog" class="data-dialog edit-dialog">
     <form id="editForm">
       <div class="dialog-heading"><div><p class="eyebrow">SONG DETAILS</p><h2>Edit track</h2></div><button id="closeEditBtn" type="button" class="icon-btn" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -160,6 +172,7 @@
     </form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <button id="updateBanner" class="update-banner" hidden><strong>Update ready</strong><span>Tap to reload Lere</span></button>
   <script src="app.js"></script>
 </body>
 </html>

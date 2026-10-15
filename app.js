@@ -1,11 +1,12 @@
 const $ = (selector) => document.querySelector(selector);
 const audio = $('#audio');
-const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list' };
+const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list', bulkMode: false, selectedIds: new Set() };
 const icons = { play: '<path d="m9 6 9 6-9 6z"/>', pause: '<path d="M8 6h3v12H8zM14 6h3v12h-3z"/>' };
 let coverTargetId = null;
 let editTargetId = null;
 let playlistEditId = null;
 let playlistPickerTrackId = null;
+let playlistPickerTrackIds = [];
 let lyricsTargetId = null;
 let suppressPlayerClickUntil = 0;
 let playbackStartedAt = 0;
@@ -148,7 +149,7 @@ async function exportLibraryData() {
     const backup = {
       app: 'Lere', version: 1, exportedAt: new Date().toISOString(), tracks,
       playlists: state.playlists, queue: state.queue,
-      settings: { theme: document.body.classList.contains('light') ? 'light' : 'dark', volume: $('#volumeBar').value, view: state.view }
+      settings: { theme: document.body.classList.contains('light') ? 'light' : 'dark', themeMode: localStorage.getItem('lere-theme-mode') || 'system', accent: localStorage.getItem('lere-accent') || '#ef233c', compact: localStorage.getItem('lere-compact') === 'true', volume: $('#volumeBar').value, view: state.view }
     };
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
     const link = document.createElement('a');
@@ -187,9 +188,13 @@ async function importLibraryData(file) {
     }
     if (backup.settings) {
       if (backup.settings.theme === 'light') document.body.classList.add('light'); else document.body.classList.remove('light');
+      if (backup.settings.themeMode) localStorage.setItem('lere-theme-mode', backup.settings.themeMode);
+      if (backup.settings.accent) localStorage.setItem('lere-accent', backup.settings.accent);
+      if (backup.settings.compact != null) localStorage.setItem('lere-compact', String(Boolean(backup.settings.compact)));
       if (backup.settings.volume != null) { $('#volumeBar').value = backup.settings.volume; audio.volume = Number(backup.settings.volume); localStorage.setItem('pulsedeck-volume', backup.settings.volume); }
       if (backup.settings.view === 'grid' || backup.settings.view === 'list') { state.view = backup.settings.view; localStorage.setItem('pulsedeck-view', state.view); }
       localStorage.setItem('pulsedeck-theme', backup.settings.theme === 'light' ? 'light' : 'dark');
+      applyAppearance();
     }
     state.tracks.sort((a, b) => a.addedAt - b.addedAt);
     if (Array.isArray(backup.playlists)) state.playlists = backup.playlists.map(playlist => ({ id: playlist.id || crypto.randomUUID(), name: playlist.name || 'Playlist', trackIds: Array.isArray(playlist.trackIds) ? playlist.trackIds : [] }));
@@ -479,18 +484,24 @@ function render() {
     ? playlist.trackIds.map(id => state.tracks.find(track => track.id === id)).filter(Boolean)
     : state.tracks;
   $('#trackList').classList.toggle('grid-view', state.view === 'grid');
+  $('#trackList').classList.toggle('bulk-mode', state.bulkMode);
   $('#listViewBtn').classList.toggle('active', state.view === 'list');
   $('#gridViewBtn').classList.toggle('active', state.view === 'grid');
   $('#library-title').textContent = state.filter === 'playlist' && playlist ? playlist.name : state.filter === 'local' ? 'On this device' : 'Your library';
   $('#editPlaylistBtn').hidden = !(state.filter === 'playlist' && playlist);
   $('#addPlaylistSongsBtn').hidden = !(state.filter === 'playlist' && playlist);
+  $('#selectTracksBtn').textContent = state.bulkMode ? 'Cancel' : 'Select';
+  $('#bulkToolbar').hidden = !state.bulkMode;
+  $('#bulkRemovePlaylistBtn').hidden = !(state.filter === 'playlist' && playlist);
+  $('#bulkCount').textContent = `${state.selectedIds.size} selected`;
   $('#trackCount').textContent = `${visible.length} ${visible.length === 1 ? 'track' : 'tracks'}`;
   $('#emptyState').hidden = visible.length > 0;
   $('#trackList').innerHTML = visible.map((track, index) => `
-    <article class="track ${playlist ? 'playlist-track' : ''} ${track.id === state.currentId ? 'active' : ''}" role="listitem" data-id="${track.id}" ${playlist ? 'draggable="true"' : ''} tabindex="0" aria-label="Play ${escapeHtml(track.title)}">
+    <article class="track ${playlist ? 'playlist-track' : ''} ${track.id === state.currentId ? 'active' : ''} ${state.selectedIds.has(track.id) ? 'selected' : ''}" role="listitem" data-id="${track.id}" ${playlist && !state.bulkMode ? 'draggable="true"' : ''} tabindex="0" aria-label="${state.bulkMode ? 'Select' : 'Play'} ${escapeHtml(track.title)}">
+      ${state.bulkMode ? `<button class="bulk-check" data-bulk-toggle="${track.id}" aria-label="${state.selectedIds.has(track.id) ? 'Deselect' : 'Select'} ${escapeHtml(track.title)}" aria-pressed="${state.selectedIds.has(track.id)}"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></button>` : ''}
       <span class="track-number ${track.cover ? 'has-cover' : ''}" ${track.cover ? `style="background-image:url('${track.cover}')"` : ''}>${track.id === state.currentId && state.playing ? '<svg viewBox="0 0 24 24"><path d="M6 9v6M12 6v12M18 9v6"/></svg>' : track.cover ? '' : String(index + 1).padStart(2, '0')}</span>
       <div class="track-info"><strong>${escapeHtml(track.title)}</strong><span>${escapeHtml(track.artist)}</span></div>
-      <div class="track-actions">
+      <div class="track-actions" ${state.bulkMode ? 'hidden' : ''}>
         <button class="track-action menu-trigger" data-menu="${track.id}" aria-label="Actions for ${escapeHtml(track.title)}" aria-expanded="${Boolean(track.menuOpen)}"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         <div class="track-menu ${track.menuOpen ? 'open' : ''}">
           <button data-edit="${track.id}"><svg viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>Edit details</button>
@@ -502,7 +513,7 @@ function render() {
           <button data-download="${track.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/></svg>Download</button>
           <button class="danger" data-remove="${track.id}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>Remove</button>
         </div>
-      </div>${playlist ? `<div class="reorder-controls"><button data-playlist-up="${track.id}" aria-label="Move up"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button><button data-playlist-down="${track.id}" aria-label="Move down"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button></div>` : ''}
+      </div>${playlist && !state.bulkMode ? `<div class="reorder-controls"><button data-playlist-up="${track.id}" aria-label="Move up"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button><button data-playlist-down="${track.id}" aria-label="Move down"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button></div>` : ''}
     </article>`).join('');
   renderPlaylistNav();
   renderRecommendations();
@@ -586,8 +597,12 @@ function previousTrack() {
 $('#fileInput').addEventListener('change', async (event) => {
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   const selectedFiles = [...event.target.files];
-  const files = selectedFiles.filter(isAudioFile);
-  if (!files.length && selectedFiles.length) { toast('Choose an audio file from the Files app.'); event.target.value = ''; return; }
+  const audioFiles = selectedFiles.filter(isAudioFile);
+  const known = new Set(state.tracks.map(track => `${track.file?.name?.toLowerCase()}|${track.file?.size}`));
+  const batch = new Set();
+  const files = audioFiles.filter(file => { const signature = `${file.name.toLowerCase()}|${file.size}`; if (known.has(signature) || batch.has(signature)) return false; batch.add(signature); return true; });
+  const duplicateCount = audioFiles.length - files.length;
+  if (!files.length && selectedFiles.length) { toast(duplicateCount ? `${duplicateCount} duplicate ${duplicateCount === 1 ? 'song was' : 'songs were'} skipped` : 'Choose an audio file from the Files app.'); event.target.value = ''; return; }
   const tracks = await Promise.all(files.map(async (file, index) => {
     let metadata = {};
     try { metadata = await readEmbeddedMetadata(file); } catch (_) {}
@@ -610,7 +625,7 @@ $('#fileInput').addEventListener('change', async (event) => {
   state.tracks.push(...tracks);
   await Promise.all(tracks.map(storeTrack));
   render();
-  if (files.length) toast(`${files.length} ${files.length === 1 ? 'track' : 'tracks'} added${files.length < selectedFiles.length ? '; non-audio files skipped' : ''}`);
+  if (files.length) toast(`${files.length} ${files.length === 1 ? 'track' : 'tracks'} added${duplicateCount ? `; ${duplicateCount} duplicate ${duplicateCount === 1 ? 'was' : 'were'} skipped` : files.length < selectedFiles.length ? '; non-audio files skipped' : ''}`);
   event.target.value = '';
 });
 
@@ -656,6 +671,12 @@ $('.player').addEventListener('click', (event) => {
 $('#closeDrawerBtn').addEventListener('click', () => setDrawer(false));
 
 $('#trackList').addEventListener('click', (event) => {
+  if (state.bulkMode) {
+    const selectable = event.target.closest('[data-bulk-toggle],[data-id]');
+    const id = selectable?.dataset.bulkToggle || selectable?.dataset.id;
+    if (id) { if (state.selectedIds.has(id)) state.selectedIds.delete(id); else state.selectedIds.add(id); render(); }
+    return;
+  }
   const menu = event.target.closest('[data-menu]');
   if (menu) {
     event.stopPropagation();
@@ -695,6 +716,7 @@ $('#trackList').addEventListener('click', (event) => {
   if (addPlaylist) {
     event.stopPropagation();
     playlistPickerTrackId = addPlaylist.dataset.addPlaylist;
+    playlistPickerTrackIds = [playlistPickerTrackId];
     state.tracks.forEach(track => { track.menuOpen = false; });
     $('#playlistPicker').innerHTML = state.playlists.length ? state.playlists.map(playlist => `<button data-pick-playlist="${playlist.id}">${escapeHtml(playlist.name)} <small>${playlist.trackIds.length} tracks</small></button>`).join('') : '<div class="playlist-picker-empty">Create a playlist first.</div><button data-create-from-picker>+ New playlist</button>';
     $('#playlistPickerDialog').showModal();
@@ -852,7 +874,7 @@ $('#deletePlaylistBtn').addEventListener('click', () => {
 $('#closePlaylistPickerBtn').addEventListener('click', () => $('#playlistPickerDialog').close());
 $('#playlistPicker').addEventListener('click', event => {
   const pick = event.target.closest('[data-pick-playlist]');
-  if (pick) { const playlist = state.playlists.find(item => item.id === pick.dataset.pickPlaylist); if (playlist && !playlist.trackIds.includes(playlistPickerTrackId)) playlist.trackIds.push(playlistPickerTrackId); saveCollections(); $('#playlistPickerDialog').close(); render(); toast('Added to playlist'); }
+  if (pick) { const playlist = state.playlists.find(item => item.id === pick.dataset.pickPlaylist); const ids = playlistPickerTrackIds.length ? playlistPickerTrackIds : [playlistPickerTrackId].filter(Boolean); if (playlist) ids.forEach(id => { if (!playlist.trackIds.includes(id)) playlist.trackIds.push(id); }); saveCollections(); playlistPickerTrackIds = []; $('#playlistPickerDialog').close(); render(); toast(`${ids.length} ${ids.length === 1 ? 'song' : 'songs'} added to playlist`); }
   if (event.target.closest('[data-create-from-picker]')) { $('#playlistPickerDialog').close(); openPlaylistDialog(); }
 });
 function setDrawerPanel(panel) {
@@ -890,12 +912,13 @@ $('.player').addEventListener('touchend', event => {
   const deltaX = touch.clientX - playerTouchStart.x;
   const deltaY = touch.clientY - playerTouchStart.y;
   const player = $('.player');
-  const startedInLyrics = playerTouchStart.target.closest?.('.lyrics-panel');
-  const lyricsAtTop = $('#lyricsPanel').scrollTop <= 2;
+  const scrollSurface = playerTouchStart.target.closest?.('.lyrics-panel,.player-queue,.drawer-main');
+  const surfaceAtTop = !scrollSurface || scrollSurface.scrollTop <= 2;
   playerTouchStart = null;
   if (Math.abs(deltaY) < 75 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.35) return;
   if (deltaY < 0 && !player.classList.contains('expanded')) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(true); }
-  if (deltaY > 0 && player.classList.contains('expanded') && (!startedInLyrics || lyricsAtTop)) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(false); }
+  else if (deltaY < 0 && player.classList.contains('expanded')) { suppressPlayerClickUntil = Date.now() + 500; $('.queue-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  if (deltaY > 0 && player.classList.contains('expanded') && surfaceAtTop) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(false); }
 }, { passive: true });
 $('.player').addEventListener('touchcancel', () => { playerTouchStart = null; }, { passive: true });
 function openLyricsDialog(id) {
@@ -923,6 +946,90 @@ $('#clearLyricsBtn').addEventListener('click', async () => {
   if (!track) return;
   track.lyrics = ''; await storeTrack(track); closeLyricsDialog(); render(); renderLyrics(track); toast('Lyrics cleared');
 });
+
+function leaveBulkMode() { state.bulkMode = false; state.selectedIds.clear(); render(); }
+$('#selectTracksBtn').addEventListener('click', () => { state.bulkMode = !state.bulkMode; state.selectedIds.clear(); render(); });
+$('#bulkCancelBtn').addEventListener('click', leaveBulkMode);
+$('#bulkSelectAllBtn').addEventListener('click', () => {
+  const playlist = activePlaylist();
+  const ids = state.filter === 'playlist' && playlist ? playlist.trackIds : state.tracks.map(track => track.id);
+  if (ids.every(id => state.selectedIds.has(id))) state.selectedIds.clear(); else ids.forEach(id => state.selectedIds.add(id));
+  render();
+});
+$('#bulkPlaylistBtn').addEventListener('click', () => {
+  if (!state.selectedIds.size) return toast('Select songs first');
+  playlistPickerTrackIds = [...state.selectedIds];
+  $('#playlistPicker').innerHTML = state.playlists.length ? state.playlists.map(playlist => `<button data-pick-playlist="${playlist.id}">${escapeHtml(playlist.name)} <small>${playlist.trackIds.length} tracks</small></button>`).join('') : '<div class="playlist-picker-empty">Create a playlist first.</div><button data-create-from-picker>+ New playlist</button>';
+  $('#playlistPickerDialog').showModal();
+});
+$('#bulkRemovePlaylistBtn').addEventListener('click', () => {
+  const playlist = activePlaylist();
+  if (!playlist || !state.selectedIds.size) return;
+  playlist.trackIds = playlist.trackIds.filter(id => !state.selectedIds.has(id));
+  saveCollections(); leaveBulkMode(); toast('Selected songs removed from playlist');
+});
+$('#bulkDeleteBtn').addEventListener('click', async () => {
+  const ids = [...state.selectedIds];
+  if (!ids.length || !confirm(`Delete ${ids.length} selected ${ids.length === 1 ? 'song' : 'songs'} from this device?`)) return;
+  ids.forEach(id => {
+    const track = state.tracks.find(item => item.id === id);
+    if (track?.url) URL.revokeObjectURL(track.url);
+    state.playlists.forEach(playlist => { playlist.trackIds = playlist.trackIds.filter(trackId => trackId !== id); });
+    state.queue = state.queue.filter(trackId => trackId !== id);
+  });
+  state.tracks = state.tracks.filter(track => !state.selectedIds.has(track.id));
+  await Promise.all(ids.map(deleteStoredTrack));
+  if (state.selectedIds.has(state.currentId)) { audio.pause(); audio.replaceChildren(); state.currentId = null; updateNowPlaying(null); }
+  saveCollections(); leaveBulkMode(); toast(`${ids.length} ${ids.length === 1 ? 'song' : 'songs'} deleted`);
+});
+function closeBulkEdit() { $('#bulkEditDialog').close(); }
+$('#bulkEditBtn').addEventListener('click', () => { if (!state.selectedIds.size) return toast('Select songs first'); $('#bulkArtist').value = ''; $('#bulkEditDialog').showModal(); });
+$('#closeBulkEditBtn').addEventListener('click', closeBulkEdit);
+$('#cancelBulkEditBtn').addEventListener('click', closeBulkEdit);
+$('#bulkEditForm').addEventListener('submit', async event => {
+  event.preventDefault(); const artist = $('#bulkArtist').value.trim(); if (!artist) return;
+  const tracks = state.tracks.filter(track => state.selectedIds.has(track.id));
+  tracks.forEach(track => { track.artist = artist; }); await Promise.all(tracks.map(storeTrack));
+  closeBulkEdit(); leaveBulkMode(); toast(`${tracks.length} ${tracks.length === 1 ? 'song' : 'songs'} updated`);
+});
+
+function applyAppearance() {
+  const mode = localStorage.getItem('lere-theme-mode') || 'system';
+  const systemLight = matchMedia('(prefers-color-scheme: light)').matches;
+  document.body.classList.toggle('light', mode === 'light' || (mode === 'system' && systemLight));
+  document.body.classList.toggle('oled', mode === 'oled');
+  document.body.classList.toggle('compact', localStorage.getItem('lere-compact') === 'true');
+  const accent = localStorage.getItem('lere-accent') || '#ef233c';
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent-2', accent);
+  $('#themeMode').value = mode; $('#accentColor').value = accent; $('#compactMode').checked = document.body.classList.contains('compact');
+}
+$('#themeBtn').addEventListener('click', () => { applyAppearance(); $('#themeDialog').showModal(); });
+$('#closeThemeBtn').addEventListener('click', () => $('#themeDialog').close());
+$('#themeMode').addEventListener('change', event => { localStorage.setItem('lere-theme-mode', event.target.value); applyAppearance(); });
+$('#accentColor').addEventListener('input', event => { localStorage.setItem('lere-accent', event.target.value); applyAppearance(); });
+$('#compactMode').addEventListener('change', event => { localStorage.setItem('lere-compact', String(event.target.checked)); applyAppearance(); });
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if ((localStorage.getItem('lere-theme-mode') || 'system') === 'system') applyAppearance(); });
+
+const formatBytes = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+async function showStorageManager() {
+  const total = state.tracks.reduce((sum, track) => sum + (track.file?.size || 0) + (track.coverBlob?.size || 0), 0);
+  const missing = state.tracks.filter(track => !track.file || !track.file.size);
+  let estimate = null; try { estimate = await navigator.storage?.estimate?.(); } catch (_) {}
+  $('#storageSummary').innerHTML = `<div><strong>${formatBytes(total)}</strong><span>Lere library</span></div><div><strong>${state.tracks.length}</strong><span>Songs</span></div><div><strong>${missing.length}</strong><span>Missing files</span></div>${estimate?.quota ? `<div><strong>${Math.round((estimate.usage || 0) / estimate.quota * 100)}%</strong><span>Browser storage used</span></div>` : ''}`;
+  const largest = [...state.tracks].sort((a,b) => (b.file?.size || 0) - (a.file?.size || 0)).slice(0,8);
+  $('#storageTracks').innerHTML = largest.length ? `<h3>Largest songs</h3>${largest.map(track => `<div><span><strong>${escapeHtml(track.title)}</strong><small>${escapeHtml(track.artist)}</small></span><b>${track.file?.size ? formatBytes(track.file.size) : 'Missing'}</b></div>`).join('')}` : '<p>No songs stored.</p>';
+  $('#storageDialog').showModal();
+}
+$('#storageBtn').addEventListener('click', () => { $('#dataDialog').close(); showStorageManager(); });
+$('#closeStorageBtn').addEventListener('click', () => $('#storageDialog').close());
+$('#recoveryBtn').addEventListener('click', async () => {
+  const track = currentTrack(); const shouldResume = Boolean(track && !audio.paused); $('#dataDialog').close();
+  if (!track) return toast('Choose a song before using recovery mode');
+  playbackRecoveryCount = 0; lastStablePlaybackTime = 0; loadTrackIntoAudio(track); updateNowPlaying(track);
+  if (shouldResume) await audio.play().catch(() => {}); toast('Audio session rebuilt');
+});
+
 $('#playBtn').addEventListener('click', togglePlay);
 $('#listViewBtn').addEventListener('click', () => { state.view = 'list'; localStorage.setItem('pulsedeck-view', 'list'); render(); });
 $('#gridViewBtn').addEventListener('click', () => { state.view = 'grid'; localStorage.setItem('pulsedeck-view', 'grid'); render(); });
@@ -957,7 +1064,6 @@ $('#editForm').addEventListener('submit', async event => {
   closeEditDialog();
   toast('Song details updated');
 });
-$('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
 audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(currentTrack(), 'playing'); syncActiveTrackUi(); });
 audio.addEventListener('playing', () => { syncMediaSession(currentTrack(), 'playing'); syncMediaPosition(); });
 audio.addEventListener('pause', () => { setPlaying(false); syncMediaSession(currentTrack(), 'paused'); });
@@ -1018,13 +1124,24 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('keydown', event => { if (event.code === 'Space' && !['INPUT','BUTTON'].includes(document.activeElement.tagName)) { event.preventDefault(); togglePlay(); } });
 const savedVolume = localStorage.getItem('pulsedeck-volume');
 if (savedVolume !== null) $('#volumeBar').value = savedVolume;
-if (localStorage.getItem('pulsedeck-theme') === 'light') document.body.classList.add('light');
+if (!localStorage.getItem('lere-theme-mode') && localStorage.getItem('pulsedeck-theme')) localStorage.setItem('lere-theme-mode', localStorage.getItem('pulsedeck-theme'));
+applyAppearance();
 restoreCollections();
 restoreLibrary();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let updateAnnounced = false;
+  const announceUpdate = () => { if (updateAnnounced) return; updateAnnounced = true; $('#updateBanner').hidden = false; };
+  $('#updateBanner').addEventListener('click', () => location.reload());
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) announceUpdate(); });
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+      if (registration.waiting) announceUpdate();
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate(); });
+      });
       if (navigator.onLine) registration.update().catch(() => {});
     } catch (_) {}
   });
