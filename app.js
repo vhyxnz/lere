@@ -227,6 +227,11 @@ function setPlaying(playing) {
   $('#playBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
 }
 
+function syncActiveTrackUi() {
+  document.querySelectorAll('.track[data-id]').forEach(row => row.classList.toggle('active', row.dataset.id === state.currentId));
+  document.querySelectorAll('.queue-item[data-queue-id]').forEach(row => row.classList.toggle('active', row.dataset.queueId === state.currentId));
+}
+
 function decodeText(bytes, encoding = 0) {
   const codec = encoding === 1 || encoding === 2 ? 'utf-16' : 'utf-8';
   try { return new TextDecoder(codec).decode(bytes).replace(/^\uFEFF|\0/g, '').trim(); }
@@ -953,7 +958,7 @@ $('#editForm').addEventListener('submit', async event => {
   toast('Song details updated');
 });
 $('#themeBtn').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('pulsedeck-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
-audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(currentTrack(), 'playing'); render(); });
+audio.addEventListener('play', () => { setPlaying(true); syncMediaSession(currentTrack(), 'playing'); syncActiveTrackUi(); });
 audio.addEventListener('playing', () => { syncMediaSession(currentTrack(), 'playing'); syncMediaPosition(); });
 audio.addEventListener('pause', () => { setPlaying(false); syncMediaSession(currentTrack(), 'paused'); });
 audio.addEventListener('loadedmetadata', () => { syncMediaSession(currentTrack(), audio.paused ? 'paused' : 'playing'); syncMediaPosition(); });
