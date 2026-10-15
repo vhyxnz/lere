@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+const APP_VERSION = '1.0.1';
 const audio = $('#audio');
 const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeatMode: 'off', playing: false, view: localStorage.getItem('pulsedeck-view') || 'list', bulkMode: false, selectedIds: new Set() };
 const icons = { play: '<path d="m9 6 9 6-9 6z"/>', pause: '<path d="M8 6h3v12H8zM14 6h3v12h-3z"/>' };
@@ -12,6 +13,10 @@ let suppressPlayerClickUntil = 0;
 let playbackStartedAt = 0;
 let lastStablePlaybackTime = 0;
 let playbackRecoveryCount = 0;
+let serviceWorkerRegistration = null;
+let updateAnnounced = false;
+$('#sidebarVersion').textContent = `Lere v${APP_VERSION}`;
+$('#currentVersionLabel').textContent = `Currently using Lere v${APP_VERSION}`;
 const DB_NAME = 'pulsedeck-library';
 const DB_VERSION = 1;
 
@@ -224,6 +229,30 @@ function toast(message) {
   el.classList.add('show');
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function announceUpdate() {
+  if (updateAnnounced) return;
+  updateAnnounced = true;
+  $('#updateBanner').hidden = false;
+}
+
+async function checkForUpdates() {
+  if (!('serviceWorker' in navigator)) return toast('Updates are unavailable in this browser');
+  if (!navigator.onLine) return toast('Connect to the internet to check for updates');
+  const button = $('#checkUpdateBtn');
+  button.disabled = true;
+  const label = button.querySelector('strong');
+  const original = label.textContent;
+  label.textContent = 'Checking…';
+  try {
+    serviceWorkerRegistration ||= await navigator.serviceWorker.getRegistration('./');
+    if (!serviceWorkerRegistration) throw new Error('No service worker');
+    await serviceWorkerRegistration.update();
+    if (serviceWorkerRegistration.waiting || serviceWorkerRegistration.installing || updateAnnounced) toast('An update is being prepared');
+    else toast(`Lere v${APP_VERSION} is up to date`);
+  } catch (_) { toast('Could not check for updates'); }
+  finally { button.disabled = false; label.textContent = original; }
 }
 
 function setPlaying(playing) {
@@ -912,13 +941,10 @@ $('.player').addEventListener('touchend', event => {
   const deltaX = touch.clientX - playerTouchStart.x;
   const deltaY = touch.clientY - playerTouchStart.y;
   const player = $('.player');
-  const scrollSurface = playerTouchStart.target.closest?.('.lyrics-panel,.player-queue,.drawer-main');
-  const surfaceAtTop = !scrollSurface || scrollSurface.scrollTop <= 2;
   playerTouchStart = null;
   if (Math.abs(deltaY) < 75 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.35) return;
   if (deltaY < 0 && !player.classList.contains('expanded')) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(true); }
   else if (deltaY < 0 && player.classList.contains('expanded')) { suppressPlayerClickUntil = Date.now() + 500; $('.queue-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  if (deltaY > 0 && player.classList.contains('expanded') && surfaceAtTop) { suppressPlayerClickUntil = Date.now() + 500; setDrawer(false); }
 }, { passive: true });
 $('.player').addEventListener('touchcancel', () => { playerTouchStart = null; }, { passive: true });
 function openLyricsDialog(id) {
@@ -1029,6 +1055,7 @@ $('#recoveryBtn').addEventListener('click', async () => {
   playbackRecoveryCount = 0; lastStablePlaybackTime = 0; loadTrackIntoAudio(track); updateNowPlaying(track);
   if (shouldResume) await audio.play().catch(() => {}); toast('Audio session rebuilt');
 });
+$('#checkUpdateBtn').addEventListener('click', checkForUpdates);
 
 $('#playBtn').addEventListener('click', togglePlay);
 $('#listViewBtn').addEventListener('click', () => { state.view = 'list'; localStorage.setItem('pulsedeck-view', 'list'); render(); });
@@ -1147,13 +1174,12 @@ restoreCollections();
 restoreLibrary();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   const hadController = Boolean(navigator.serviceWorker.controller);
-  let updateAnnounced = false;
-  const announceUpdate = () => { if (updateAnnounced) return; updateAnnounced = true; $('#updateBanner').hidden = false; };
   $('#updateBanner').addEventListener('click', () => location.reload());
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) announceUpdate(); });
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+      serviceWorkerRegistration = registration;
       if (registration.waiting) announceUpdate();
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing;

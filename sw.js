@@ -1,4 +1,5 @@
-const CACHE_NAME = 'lere-shell-v35';
+const APP_VERSION = '1.0.1';
+const CACHE_NAME = 'lere-shell-v37';
 const APP_SHELL = [
   './',
   './index.html',
