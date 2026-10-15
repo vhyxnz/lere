@@ -27,7 +27,6 @@
 
       <nav class="nav" aria-label="Library navigation">
         <button class="nav-item active" data-filter="all"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/></svg><span>All music</span></button>
-        <button class="nav-item" data-filter="local"><svg viewBox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4z"/></svg><span>Device</span></button>
         <button id="playlistsNav" class="nav-item" data-filter="playlists"><svg viewBox="0 0 24 24"><path d="M4 6h10M4 11h10M4 16h7"/><path d="M18 13v7m0-7 3 2m-3-2-3 2"/></svg><span>Playlists</span></button>
       </nav>
       <div id="playlistNav" class="playlist-nav" aria-label="Your playlists"></div>
@@ -113,7 +112,7 @@
     <div class="volume-area">
       <svg viewBox="0 0 24 24"><path d="M5 10v4h4l5 4V6l-5 4z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>
       <input id="volumeBar" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
-      <button id="clearBtn" class="icon-btn" aria-label="Clear queue" title="Clear queue"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg></button>
+      <button id="clearBtn" class="icon-btn" aria-label="Clear queue" title="Clear queue" hidden><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg></button>
     </div>
   </footer>
 

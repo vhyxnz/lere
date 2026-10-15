@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const audio = $('#audio');
-const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeat: false, playing: false, view: localStorage.getItem('pulsedeck-view') || 'list', bulkMode: false, selectedIds: new Set() };
+const state = { tracks: [], playlists: [], queue: [], currentId: null, playbackContext: { type: 'library', id: null }, filter: 'all', selectedPlaylistId: null, shuffle: false, repeatMode: 'off', playing: false, view: localStorage.getItem('pulsedeck-view') || 'list', bulkMode: false, selectedIds: new Set() };
 const icons = { play: '<path d="m9 6 9 6-9 6z"/>', pause: '<path d="M8 6h3v12H8zM14 6h3v12h-3z"/>' };
 let coverTargetId = null;
 let editTargetId = null;
@@ -1036,7 +1036,17 @@ $('#gridViewBtn').addEventListener('click', () => { state.view = 'grid'; localSt
 $('#prevBtn').addEventListener('click', previousTrack);
 $('#nextBtn').addEventListener('click', () => move(1));
 $('#shuffleBtn').addEventListener('click', event => { state.shuffle = !state.shuffle; event.currentTarget.classList.toggle('active', state.shuffle); toast(`Shuffle ${state.shuffle ? 'on' : 'off'}`); });
-$('#repeatBtn').addEventListener('click', event => { state.repeat = !state.repeat; event.currentTarget.classList.toggle('active', state.repeat); toast(`Repeat ${state.repeat ? 'on' : 'off'}`); });
+$('#repeatBtn').addEventListener('click', event => {
+  state.repeatMode = state.repeatMode === 'off' ? 'all' : state.repeatMode === 'all' ? 'one' : 'off';
+  const button = event.currentTarget;
+  button.classList.toggle('active', state.repeatMode !== 'off');
+  button.classList.toggle('repeat-one', state.repeatMode === 'one');
+  button.querySelector('svg').innerHTML = state.repeatMode === 'one'
+    ? '<path d="m17 2 3 3-3 3"/><path d="M3 11V9a4 4 0 0 1 4-4h13"/><path d="m7 22-3-3 3-3"/><path d="M21 13v2a4 4 0 0 1-4 4H4"/><path d="M12 9v6"/>'
+    : '<path d="m17 2 3 3-3 3"/><path d="M3 11V9a4 4 0 0 1 4-4h13"/><path d="m7 22-3-3 3-3"/><path d="M21 13v2a4 4 0 0 1-4 4H4"/>';
+  const label = state.repeatMode === 'one' ? 'Repeat one' : state.repeatMode === 'all' ? 'Repeat queue' : 'Repeat off';
+  button.setAttribute('aria-label', label); button.title = label; toast(label);
+});
 $('#clearBtn').addEventListener('click', () => { state.queue = []; saveCollections(); renderPlayerQueue(); toast('Queue cleared'); });
 $('#volumeBar').addEventListener('input', event => { audio.volume = Number(event.target.value); localStorage.setItem('pulsedeck-volume', event.target.value); });
 $('#seekBar').addEventListener('input', event => { if (audio.duration) audio.currentTime = audio.duration * (Number(event.target.value) / 100); });
@@ -1090,7 +1100,14 @@ audio.addEventListener('ended', () => {
     }, { once: true });
     return;
   }
-  state.repeat ? playTrack(state.currentId) : move(1);
+  if (state.repeatMode === 'one') playTrack(state.currentId);
+  else if (state.repeatMode === 'all' || state.shuffle) move(1);
+  else {
+    const order = state.playbackContext.type === 'queue' ? state.queue : state.tracks.map(track => track.id);
+    const validOrder = order.filter(id => state.tracks.some(track => track.id === id));
+    const index = validOrder.indexOf(state.currentId);
+    if (index >= 0 && index < validOrder.length - 1) move(1); else setPlaying(false);
+  }
 });
 audio.addEventListener('timeupdate', () => {
   if (!audio.ended && Number.isFinite(audio.currentTime)) lastStablePlaybackTime = audio.currentTime;
